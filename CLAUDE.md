@@ -137,9 +137,9 @@ Automatic builds produce the seven Entware configurations under `config/entware/
 
 ## Versions and releases
 
-`VERSION` is the source of the `MAJOR.MINOR.PATCH` release number used in the backend, WebUI and package; `-1` is the package revision. Local and branch builds use the same number without an automatic dev marker. The updater cannot distinguish such builds from a published release with the same number and package identity.
+`VERSION` is the source of the `MAJOR.MINOR.PATCH` release number used in the backend, WebUI and package; `-1` is the package revision. Local and branch builds use the same number without an automatic dev marker. `make PKG_VERSION_PRERELEASE=1` enables the existing WebUI dev indicator manually; it does not change backend/package versions. The updater cannot distinguish such builds from a published release with the same number and package identity.
 
-For a release, update `VERSION`, add a dated `## [X.Y.Z]` section to `CHANGELOG.md`, validate and merge the changes into `develop`, then push the matching unused tag `vX.Y.Z`. `scripts/release_version.py` rejects invalid/mismatched tags and missing, empty or duplicate release-note sections. `--notes` extracts that release's notes. Only tags publish releases, after all tests and packages succeed; existing published assets are immutable. Ordinary branch/PR builds do not publish releases.
+For a release, update `VERSION`, move the pending changes from `## [Unreleased]` into a dated `## [X.Y.Z]` section in `CHANGELOG.md`, validate and merge the changes into `develop`, then push the matching unused tag `vX.Y.Z`. `scripts/release_version.py` rejects invalid/mismatched tags and missing, empty or duplicate release-note sections. `--notes` extracts that release's notes. Only tags publish releases, after all tests and packages succeed; existing published assets are immutable. Ordinary branch/PR builds do not publish releases.
 
 ## API documentation and support
 
