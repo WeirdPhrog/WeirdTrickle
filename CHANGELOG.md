@@ -4,8 +4,11 @@
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-10-18
+
 ### Изменено
 
+- Обновлён маскот: исходное изображение, логотип README, страница входа, favicon и иконка приложения используют новую версию. Сохранена прозрачность; адрес иконки изменён для обновления браузерного кеша.
 - В README добавлены команды восстановления `config.yaml` из выбранного архива и пояснение о потере изменений, сделанных после создания этой копии.
 - Из Makefile удалён неиспользуемый экспорт переменных старого CI и преобразование старого суффикса `~git` для APK. Существующая ручная пометка `PKG_VERSION_PRERELEASE=1` сохранена и описана отдельно от версии пакета.
 
@@ -53,7 +56,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.2...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.3...develop
+[1.0.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2026.10.16.20...v1.0.0
