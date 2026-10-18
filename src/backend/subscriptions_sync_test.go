@@ -29,7 +29,7 @@ func TestSubscriptionFailureBackoffPreservesRulesAndAllowsManualSync(t *testing.
 	sub := &models.Subscription{ID: id, URL: server.URL, Enable: true, Interval: 86400, LastUpdate: 1, Rules: []*models.SubscriptionRule{rule}}
 	a := &App{subscriptions: []*models.Subscription{sub}}
 	now := time.Unix(1800000000, 0)
-	for _, offset := range []time.Duration{0, time.Minute, 2 * time.Minute} {
+	for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
 		if _, err := a.syncDueSubscriptions(context.Background(), now.Add(offset)); err != nil {
 			t.Fatal(err)
 		}

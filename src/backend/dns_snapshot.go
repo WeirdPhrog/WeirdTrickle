@@ -26,7 +26,7 @@ func (a *App) dnsRuleSetSnapshot(names []string) []*RuleSet {
 func (s *dnsRuleSnapshot) matches(names []string) bool {
 	for _, rule := range s.rules {
 		for _, name := range names {
-			if rule.IsMatch(name) {
+			if rule.MayMatch(name) {
 				return true
 			}
 		}

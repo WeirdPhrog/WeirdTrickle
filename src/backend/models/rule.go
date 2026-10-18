@@ -30,7 +30,7 @@ type Rule struct {
 	compileOnce sync.Once
 	compileWait sync.WaitGroup
 	compileErr  error
-	compiled    func(string) bool
+	compiled    func(string) (bool, error)
 }
 
 func (d *Rule) IsEnabled() bool {
@@ -47,15 +47,11 @@ func (d *Rule) Compile() error {
 			re, err := regexp2.Compile(d.Rule, regexp2.IgnoreCase)
 			if err != nil {
 				d.compileErr = err
-				d.compiled = func(string) bool { return false }
 				return
 			}
 			// User/subscription regexes may backtrack exponentially on DNS names.
 			re.MatchTimeout = 100 * time.Millisecond
-			d.compiled = func(s string) bool {
-				ok, _ := re.MatchString(s)
-				return ok
-			}
+			d.compiled = re.MatchString
 		}
 	})
 	d.compileWait.Wait()
@@ -87,10 +83,24 @@ func (d *Rule) IsMatch(domainName string) bool {
 		if err != nil {
 			return false
 		}
-		return d.compiled(domainName)
+		ok, _ := d.compiled(domainName)
+		return ok
 
 	case RuleTypeSubnet, RuleTypeSubnet6:
 		return false
 	}
 	return false
+}
+
+// MayMatch is a conservative prefilter, not a routing decision. A regex
+// timeout is inconclusive and must not let a DNS answer bypass an update lock.
+func (d *Rule) MayMatch(domainName string) bool {
+	if d.Type != RuleTypeRegEx {
+		return d.IsMatch(domainName)
+	}
+	if err := d.Compile(); err != nil {
+		return false
+	}
+	ok, err := d.compiled(domainName)
+	return ok || err != nil
 }

@@ -26,3 +26,17 @@ func TestRegexLookaheadRemainsSupported(t *testing.T) {
 		t.Fatal("lookahead matching changed")
 	}
 }
+
+func TestRegexTimeoutCannotExcludePendingRoutingRule(t *testing.T) {
+	rule := &Rule{Type: RuleTypeRegEx, Rule: `^(a+)+$`}
+	if !rule.MayMatch(strings.Repeat("a", 200) + "!") {
+		t.Fatal("a regex timeout was treated as a definitive non-match")
+	}
+	if rule.MayMatch("unrelated.example") || !rule.MayMatch("aaaa") {
+		t.Fatal("completed regex results changed")
+	}
+	invalid := &Rule{Type: RuleTypeRegEx, Rule: "["}
+	if invalid.MayMatch("example") {
+		t.Fatal("a pattern that can never compile should not participate")
+	}
+}

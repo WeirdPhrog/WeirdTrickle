@@ -122,6 +122,7 @@ func (a *App) SyncSubscriptionByID(id intID.ID, now time.Time, urlOverride strin
 }
 
 func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now time.Time, urlOverride string) (app.SubscriptionSyncResult, bool, error) {
+	started := time.Now()
 	a.subscriptionSyncMu.Lock()
 	defer a.subscriptionSyncMu.Unlock()
 
@@ -145,7 +146,7 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 	list, err := a.FetchSubscriptionList(ctx, fetchURL)
 	if err != nil {
 		if ctx.Err() == nil {
-			a.subscriptionFetchFailed(id, fetchURL, now)
+			a.subscriptionFetchFailed(id, fetchURL, now.Add(time.Since(started)))
 		}
 		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
 	}
@@ -198,6 +199,7 @@ func (a *App) SyncDueSubscriptions(now time.Time) (bool, error) {
 }
 
 func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, error) {
+	started := time.Now()
 	a.subscriptionSyncMu.Lock()
 	defer a.subscriptionSyncMu.Unlock()
 
@@ -241,7 +243,7 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 		list, err := a.FetchSubscriptionList(ctx, item.url)
 		if err != nil {
 			if ctx.Err() == nil {
-				a.subscriptionFetchFailed(item.id, item.url, now)
+				a.subscriptionFetchFailed(item.id, item.url, now.Add(time.Since(started)))
 			}
 			log.Error().Err(err).Str("subscription", item.id.String()).Msg("failed to fetch subscription")
 			continue
