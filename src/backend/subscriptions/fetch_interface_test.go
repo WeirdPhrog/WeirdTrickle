@@ -81,7 +81,7 @@ func TestFetchInterfaceValidation(t *testing.T) {
 			t.Errorf("%q: %v", name, err)
 		}
 	}
-	for _, name := range []string{".", "..", "longinterface123", "wg0\x00", " wg0", "wg0/1", "wg0\n"} {
+	for _, name := range []string{".", "..", "longinterface123", "wg0\x00", " wg0", "wg0/1", "wg0:1", "wg0\n"} {
 		if err := ValidateFetchInterface(name); err == nil {
 			t.Errorf("accepted %q", name)
 		}

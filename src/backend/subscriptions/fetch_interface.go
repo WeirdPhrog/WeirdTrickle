@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var fetchInterfacePattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,15}$`)
+var fetchInterfacePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,15}$`)
 
 func ValidateFetchInterface(name string) error {
 	// An absent/down interface is allowed: retain the choice across VPN restarts.

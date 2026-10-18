@@ -9,6 +9,22 @@ import (
 	"magitrickle/utils/intID"
 )
 
+// Only failed rollbacks are retried. Healthy sets and routing choices are not
+// rebuilt, and a suspended route is released only after both families restore.
+func (a *App) retryRoutingRestores() error {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	var errs []error
+	for _, sets := range [][]*RuleSet{a.userRuleSets, a.subscriptionRuleSets} {
+		for _, g := range sets {
+			if err := g.retryRestore(); err != nil {
+				errs = append(errs, fmt.Errorf("restore routing for %s: %w", g.RuntimeKey(), err))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // Caller holds stateMu. Reuse live sets by ID, prepare additions first and
 // remove obsolete sets last. Unrelated subscriptions never lose their routes.
 func (a *App) reconcileRuleSets(previous []*RuleSet, specs []rulesets.Spec, subscription bool) ([]*RuleSet, error) {

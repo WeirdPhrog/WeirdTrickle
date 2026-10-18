@@ -45,11 +45,6 @@ groups:
         type: wildcard
         rule: '*wildcard.example.com'
         enable: true
-      - id: 00ae5f7c
-        name: RegEx Example
-        type: regex
-        rule: '^.*.regex.example.com$'
-        enable: true
       - id: 6120dc8a
         name: Domain Example
         type: domain

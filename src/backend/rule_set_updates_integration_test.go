@@ -232,6 +232,35 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 			}
 		}
 	}
+	// A referenced temporary set makes replacement fail in the kernel while
+	// leaving the live sets intact. A failed rollback must retry, rather than
+	// release an unverified set or remain suspended after the fault clears.
+	tmp4 := "up_" + g.RuntimeKey() + "_t4"
+	run("ipset", "create", tmp4, "hash:net", "family", "inet")
+	run("iptables", "-t", "mangle", "-N", "BUSY_SET")
+	defer exec.Command("ipset", "destroy", tmp4).Run()
+	defer exec.Command("iptables", "-t", "mangle", "-X", "BUSY_SET").Run()
+	defer exec.Command("iptables", "-t", "mangle", "-F", "BUSY_SET").Run()
+	run("iptables", "-t", "mangle", "-A", "BUSY_SET", "-m", "set", "--match-set", tmp4, "dst", "-j", "RETURN")
+	if err := a.UpdateGroup(&combined); err == nil {
+		t.Fatal("a blocked replacement unexpectedly succeeded")
+	}
+	assertBlocked()
+	if err := a.retryRoutingRestores(); err == nil {
+		t.Fatal("restoration unexpectedly succeeded while the fault persisted")
+	}
+	assertBlocked()
+	// Saving unchanged rules must not release the blackhole without restoring
+	// the set that failed previously.
+	renamed := *group
+	renamed.Name = "rename while recovery is pending"
+	if err := a.UpdateGroup(&renamed); err == nil {
+		t.Fatal("a metadata edit bypassed the pending kernel restoration")
+	}
+	assertBlocked()
+	run("iptables", "-t", "mangle", "-F", "BUSY_SET")
+	check(a.retryRoutingRestores())
+	assertEgress("mtother")
 	for _, iface := range []string{"missing-vpn", "blackhole", "mtother"} {
 		changed.Interface = iface
 		check(a.UpdateGroup(&changed))

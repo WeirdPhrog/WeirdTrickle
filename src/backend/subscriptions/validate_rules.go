@@ -15,7 +15,7 @@ func ValidateRules(rules []*models.SubscriptionRule) error {
 		}
 		if rule.Enable {
 			if err := models.ValidateRuleType(rule.Type); err != nil {
-				return fmt.Errorf("subscription rule %d: %w", i+1, err)
+				return fmt.Errorf("subscription rule %d (%q): %w", i+1, rule.Rule, err)
 			}
 		}
 	}
