@@ -619,6 +619,9 @@ func (g *RuleSet) LinkUpHook(event netlink.LinkUpdate) error {
 	if !g.ConfiguredEnabled() {
 		return nil
 	}
+	if g.ipsetToLink == nil {
+		return fmt.Errorf("routing is not ready")
+	}
 
 	return g.ipsetToLink.LinkUpHook(event)
 }
@@ -633,6 +636,9 @@ func (g *RuleSet) AddrChangeHook(event netlink.AddrUpdate) error {
 
 	if !g.ConfiguredEnabled() {
 		return nil
+	}
+	if g.ipsetToLink == nil {
+		return fmt.Errorf("routing is not ready")
 	}
 
 	return g.ipsetToLink.AddrChangeHook(event)

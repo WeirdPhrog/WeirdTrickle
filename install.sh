@@ -57,7 +57,7 @@ main() {
     select_target
     mt_tmp=$(mktemp -d /tmp/magitrickle-update.XXXXXX)
     mt_locked=false
-    trap 'rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /opt/var/lock/magitrickle-update.lock; fi' EXIT
+    trap 'rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /tmp/magitrickle-update.lock; fi' EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
     base=https://github.com/WeirdPhrog/MagiTrickle/releases
@@ -78,8 +78,8 @@ main() {
     if [ -n "$installed" ] && [ "$explicit_version" = false ] && "$opkg" compare-versions "$installed" '>' "$version-1"; then
         die 'Installed version is newer. Use --version explicitly to downgrade.'
     fi
-    mkdir -p /opt/var/lock
-    mkdir /opt/var/lock/magitrickle-update.lock 2>/dev/null || die 'Another update is running (lock: /opt/var/lock/magitrickle-update.lock).'
+    # /tmp is cleared on reboot; a power loss must not leave a permanent lock.
+    mkdir /tmp/magitrickle-update.lock 2>/dev/null || die 'Another update is running (lock: /tmp/magitrickle-update.lock).'
     mt_locked=true
     # Pin both downloads to the same immutable release, even if latest changes.
     download "$release/SHA256SUMS" "$mt_tmp/SHA256SUMS" || die 'Cannot download release checksums.'

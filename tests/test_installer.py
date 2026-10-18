@@ -136,6 +136,30 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('opkg flag', calls)
         self.assertFalse((self.opt / 'etc/opkg').exists())
 
+    def test_old_persistent_lock_does_not_block_update(self):
+        lock = self.opt / 'var/lock/magitrickle-update.lock'
+        lock.mkdir(parents=True)
+        self.assertIn('opkg --force-downgrade', self.run_installer())
+        self.assertFalse((self.root / 'magitrickle-update.lock').exists())
+
+    def test_concurrent_update_is_rejected(self):
+        lock = self.root / 'magitrickle-update.lock'
+        lock.mkdir()
+        self.assertNotIn('opkg --force-downgrade', self.run_installer(success=False))
+        self.assertTrue(lock.exists(), 'must not remove another updater lock')
+
+    def test_architecture_registration_removed_only_on_uninstall(self):
+        source = (Path(__file__).resolve().parents[1] / 'files/entware/_ipk/control/postrm').read_text()
+        script = self.root / 'postrm'
+        script.write_text(source.replace('/opt', str(self.opt)))
+        config = self.opt / 'etc/opkg/magitrickle-fork.conf'
+        config.parent.mkdir(parents=True)
+        for action, remains in [('upgrade', True), ('remove', False), ('purge', False)]:
+            with self.subTest(action=action):
+                config.write_text('arch mipsel-3.4_kn 250\n')
+                subprocess.run(['sh', str(script), action], check=True)
+                self.assertEqual(config.exists(), remains)
+
     def test_current_version_is_noop(self):
         self.existing_config(self.version + '-1')
         self.assertNotIn('opkg --force-downgrade', self.run_installer())

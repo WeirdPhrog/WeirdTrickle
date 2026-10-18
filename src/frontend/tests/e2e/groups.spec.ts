@@ -423,6 +423,17 @@ test.describe("Groups Management", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
+  test("disabled invalid rules do not block saving but enabled ones do", async ({ page }) => {
+    await groupsPage.createGroup();
+    await groupsPage.setRulePattern(0, 0, "not a domain");
+    await expect(groupsPage.saveButton).toHaveClass(/inactive/);
+    const toggle = (await groupsPage.getRule(0, 0)).locator('.actions button[role="switch"]');
+    await toggle.click();
+    await expect(groupsPage.saveButton).not.toHaveClass(/inactive/);
+    await toggle.click();
+    await expect(groupsPage.saveButton).toHaveClass(/inactive/);
+  });
+
   test("should change group color", async ({ page }) => {
     await groupsPage.createGroup();
     const groupHeader = await groupsPage.getGroupHeader(0);

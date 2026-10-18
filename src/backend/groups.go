@@ -64,7 +64,10 @@ func (a *App) ReplaceGroups(models []*models.Group) error {
 }
 
 func (a *App) replaceGroupsLocked(models []*models.Group) error {
-	next, err := a.reconcileRuleSets(a.userRuleSets, groupruntime.BuildRuntimeRuleSets(models), false)
+	specs := groupruntime.BuildRuntimeRuleSets(models)
+	a.publishDNSRulesLocked(specs)
+	defer a.publishDNSRulesLocked(nil)
+	next, err := a.reconcileRuleSets(a.userRuleSets, specs, false)
 	if err == nil {
 		a.userRuleSets = next
 	}

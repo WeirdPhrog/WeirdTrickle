@@ -313,7 +313,7 @@ func (a *App) routeCachedAddresses(name string) error {
 
 func (a *App) routeDNSAddress(names []string, ip net.IP, ttl uint32) error {
 	var errs []error
-	for _, group := range a.ruleSetSnapshot() {
+	for _, group := range a.dnsRuleSetSnapshot(names) {
 		matched, err := group.addDNSAddress(names, ip, ttl)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("group %s: %w", group.IDValue(), err))
@@ -333,12 +333,12 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return false, nil
 	}
-	if g.ipset == nil || g.ipsetToLink == nil {
-		return false, fmt.Errorf("routing is not ready")
-	}
 	for _, rule := range g.domainRules() {
 		for _, name := range names {
 			if rule.IsMatch(name) {
+				if g.ipset == nil || g.ipsetToLink == nil {
+					return true, fmt.Errorf("routing is not ready")
+				}
 				if len(ip) == net.IPv4len {
 					return true, g.addIPv4Subnet(netfilterTools.IPv4Subnet{Address: [4]byte(ip), CIDR: 32}, &ttl)
 				}

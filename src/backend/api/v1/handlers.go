@@ -96,7 +96,7 @@ func (h *Handler) ListInterfaces(w http.ResponseWriter, r *http.Request) {
 //	@Router			/api/v1/system/config/save [post]
 func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 	if err := h.app.SaveConfig(); err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+		utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("changes are applied, but failed to save config: %v", err))
 	}
 }
 

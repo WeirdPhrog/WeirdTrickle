@@ -30,12 +30,15 @@ var (
 type App struct {
 	enabled atomic.Bool
 
-	config        models.AppConfig
-	stateMu       sync.RWMutex
-	configFileMu  sync.Mutex
-	configLoadErr error
+	config         models.AppConfig
+	configSnapshot atomic.Pointer[models.AppConfig]
+	dnsRules       atomic.Pointer[dnsRuleSnapshot]
+	stateMu        sync.RWMutex
+	configFileMu   sync.Mutex
+	configLoadErr  error
 
-	subscriptionSyncMu sync.Mutex
+	subscriptionSyncMu  sync.Mutex
+	subscriptionRetries map[intID.ID]subscriptionRetry
 
 	dnsMITM              *dnsMITMProxy.DNSMITMProxy
 	nfHelper             *netfilterTools.Helper
@@ -51,6 +54,7 @@ func New() *App {
 	a := &App{
 		config: constant.DefaultAppConfig,
 	}
+	a.publishConfigLocked()
 	if err := a.LoadConfig(); err != nil {
 		log.Error().Err(err).Msg("failed to load config file")
 	}
@@ -59,9 +63,18 @@ func New() *App {
 
 // Config возвращает конфигурацию
 func (a *App) Config() models.AppConfig {
+	if config := a.configSnapshot.Load(); config != nil {
+		return *config
+	}
 	a.stateMu.RLock()
 	defer a.stateMu.RUnlock()
 	return a.config
+}
+
+// The copy and its referenced values are immutable after publication.
+func (a *App) publishConfigLocked() {
+	config := a.config
+	a.configSnapshot.Store(&config)
 }
 
 // UserGroups returns only user-defined groups.
@@ -79,6 +92,7 @@ func (a *App) UserGroups() []app.RuleSet {
 func (a *App) ClearGroups() {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
+	defer a.publishDNSRulesLocked(nil)
 	for _, g := range a.userRuleSets {
 		_ = g.Disable()
 	}
@@ -106,6 +120,8 @@ func (a *App) addGroupLocked(groupModel *models.Group) error {
 		return fmt.Errorf("failed to create group: %w", err)
 	}
 	a.userRuleSets = append(a.userRuleSets, grp)
+	a.publishDNSRulesLocked(nil)
+	defer a.publishDNSRulesLocked(nil)
 	removeAdded := func() {
 		a.userRuleSets = a.userRuleSets[:len(a.userRuleSets)-1]
 	}
@@ -129,6 +145,7 @@ func (a *App) addGroupLocked(groupModel *models.Group) error {
 func (a *App) RemoveGroupByIndex(idx int) {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
+	defer a.publishDNSRulesLocked(nil)
 	if idx < 0 || idx >= len(a.userRuleSets) {
 		return
 	}
@@ -142,6 +159,7 @@ func (a *App) RemoveGroupByIndex(idx int) {
 func (a *App) RemoveGroupByID(id intID.ID) (bool, error) {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
+	defer a.publishDNSRulesLocked(nil)
 	for idx, group := range a.userRuleSets {
 		if group.IDValue() == id {
 			if err := group.Disable(); err != nil {
@@ -227,6 +245,7 @@ func (a *App) RemoveSubscriptionByID(id intID.ID) (bool, error) {
 				}
 				return true, err
 			}
+			delete(a.subscriptionRetries, id)
 			return true, nil
 		}
 	}
@@ -246,7 +265,10 @@ func (a *App) DnsOverrider() *netfilterTools.PortRemap {
 func (a *App) ruleSetSnapshot() []*RuleSet {
 	a.stateMu.RLock()
 	defer a.stateMu.RUnlock()
+	return a.ruleSetSnapshotLocked()
+}
 
+func (a *App) ruleSetSnapshotLocked() []*RuleSet {
 	list := make([]*RuleSet, 0, len(a.userRuleSets)+len(a.subscriptionRuleSets))
 	list = append(list, a.userRuleSets...)
 	list = append(list, a.subscriptionRuleSets...)
