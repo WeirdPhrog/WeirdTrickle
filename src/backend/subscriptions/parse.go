@@ -51,6 +51,7 @@ func ParseRules(list string) []*models.SubscriptionRule {
 func normalizeSubscriptionRule(pattern string) string {
 	pattern = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(pattern), "\ufeff"))
 	original := pattern
+	domainNotation := !strings.ContainsAny(pattern, "*?") && (strings.HasPrefix(pattern, ".") || strings.HasSuffix(pattern, "."))
 	// A leading dot denotes a namespace in plain domain lists. Do not strip
 	// it from wildcard/unsupported expressions and change their meaning.
 	if !strings.ContainsAny(pattern, "*?") {
@@ -66,6 +67,11 @@ func normalizeSubscriptionRule(pattern string) string {
 			pattern = ascii
 			break
 		}
+	}
+	// Domain notation must not turn malformed IP/CIDR input into a network
+	// routing rule, or reinterpret an ambiguous numeric domain as an IP.
+	if domainNotation && (!isValidNamespace(pattern) || isValidSubnet(pattern)) {
+		return original
 	}
 	if pattern != original && detectSubscriptionRuleType(pattern) == "" {
 		return original

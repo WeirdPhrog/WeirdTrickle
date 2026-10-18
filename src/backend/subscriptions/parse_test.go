@@ -35,7 +35,7 @@ func TestParseRulesNormalizesPlainDomainLists(t *testing.T) {
 }
 
 func TestNormalizationDoesNotSilentlyDropUnsupportedEntries(t *testing.T) {
-	for _, pattern := range []string{".", "..", ".*example.com", "*.example.com.", "not a domain", "https://example.com", "пример..рф"} {
+	for _, pattern := range []string{".", "..", ".*example.com", "*.example.com.", ".192.0.2.1", "192.0.2.1.", ".192.0.2.0/24", "192.0.2.0/24.", ".2001:db8::1", "2001:db8::1.", "not a domain", "https://example.com", "пример..рф"} {
 		rules := ParseRules("valid.example\n" + pattern)
 		if len(rules) != 2 || ValidateRules(rules) == nil {
 			t.Fatalf("unsupported entry %q was dropped or accepted: %+v", pattern, rules)
