@@ -2,12 +2,14 @@ export class ChangeTracker<T extends object> {
   private state: T;
   private proxy: T;
 
-  private originalObjects = new Map<string, any>();
-  private originalArrays = new WeakMap<object, string[]>();
+  // Rule IDs are unique within a parent, not across the whole configuration.
+  private originalObjects = new Map<object, any>();
+  private originalArrays = new WeakMap<object, any[]>();
+  private snapshotTargets = new WeakMap<object, object>();
   private proxyCache = new WeakMap<object, any>();
   private reverseProxyCache = new WeakMap<object, object>();
 
-  private dirtyObjectProps = new Map<string, Set<string>>();
+  private dirtyObjectProps = new Map<object, Set<string>>();
   private dirtyArrays = new Set<object>();
 
   private version = $state(0);
@@ -21,6 +23,7 @@ export class ChangeTracker<T extends object> {
   private init(snapshot: any) {
     this.originalObjects.clear();
     this.originalArrays = new WeakMap();
+    this.snapshotTargets = new WeakMap();
     this.proxyCache = new WeakMap();
     this.reverseProxyCache = new WeakMap();
     this.dirtyObjectProps.clear();
@@ -30,12 +33,16 @@ export class ChangeTracker<T extends object> {
 
   private indexAndLink(stateNode: any, snapshotNode: any) {
     if (!stateNode || typeof stateNode !== "object") return;
+    stateNode = this.targetOf(stateNode);
+    if (snapshotNode && typeof snapshotNode === "object") {
+      this.snapshotTargets.set(snapshotNode, stateNode);
+    }
 
     if (Array.isArray(stateNode)) {
-      const ids = Array.isArray(snapshotNode)
-        ? snapshotNode.map((item: any) => item?.id ?? item)
-        : [];
-      this.originalArrays.set(stateNode, ids);
+      this.originalArrays.set(
+        stateNode,
+        stateNode.map((item: any) => this.targetOf(item)),
+      );
 
       for (let i = 0; i < stateNode.length; i++) {
         if (snapshotNode?.[i]) this.indexAndLink(stateNode[i], snapshotNode[i]);
@@ -44,7 +51,9 @@ export class ChangeTracker<T extends object> {
     }
 
     if ("id" in stateNode && stateNode.id) {
-      this.originalObjects.set(stateNode.id, { ...snapshotNode });
+      const snapshot = { ...snapshotNode };
+      this.snapshotTargets.set(snapshot, stateNode);
+      this.originalObjects.set(stateNode, snapshot);
     }
 
     for (const key in stateNode) {
@@ -52,6 +61,10 @@ export class ChangeTracker<T extends object> {
         this.indexAndLink(stateNode[key], snapshotNode?.[key]);
       }
     }
+  }
+
+  private targetOf(node: any): any {
+    return this.reverseProxyCache.get(node) || this.snapshotTargets.get(node) || node;
   }
 
   private createProxy(target: any): any {
@@ -68,7 +81,10 @@ export class ChangeTracker<T extends object> {
           ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"].includes(prop)
         ) {
           return (...args: any[]) => {
-            const res = Reflect.get(tgt, prop, receiver).apply(tgt, args);
+            const res = Reflect.get(tgt, prop, receiver).apply(
+              tgt,
+              args.map((arg) => this.targetOf(arg)),
+            );
             this.checkArrayStructure(tgt);
             this.notify();
             return res;
@@ -78,7 +94,7 @@ export class ChangeTracker<T extends object> {
         return typeof val === "object" && val !== null ? this.createProxy(val) : val;
       },
       set: (tgt, prop, val) => {
-        const res = Reflect.set(tgt, prop, val);
+        const res = Reflect.set(tgt, prop, this.targetOf(val));
         if (isArray) {
           if (prop === "length" || !isNaN(Number(prop))) this.checkArrayStructure(tgt);
         } else if (typeof prop === "string") {
@@ -103,29 +119,28 @@ export class ChangeTracker<T extends object> {
   }
 
   private checkObjectField(target: any, prop: string) {
-    const id = target.id;
-    if (!id || !this.originalObjects.has(id)) return;
+    if (!target.id || !this.originalObjects.has(target)) return;
 
-    const originalVal = this.originalObjects.get(id)[prop];
+    const originalVal = this.originalObjects.get(target)[prop];
     const currentVal = target[prop];
 
-    let props = this.dirtyObjectProps.get(id);
+    let props = this.dirtyObjectProps.get(target);
     if (currentVal !== originalVal) {
       if (!props) {
         props = new Set();
-        this.dirtyObjectProps.set(id, props);
+        this.dirtyObjectProps.set(target, props);
       }
       props.add(prop);
     } else if (props) {
       props.delete(prop);
-      if (props.size === 0) this.dirtyObjectProps.delete(id);
+      if (props.size === 0) this.dirtyObjectProps.delete(target);
     }
   }
 
   private checkArrayStructure(array: any) {
     if (!this.originalArrays.has(array)) return;
     const originals = this.originalArrays.get(array)!;
-    const currentIds = array.map((i: any) => i?.id ?? i);
+    const currentIds = array.map((item: any) => this.targetOf(item));
 
     let dirty = originals.length !== currentIds.length;
     if (!dirty) {
@@ -141,13 +156,13 @@ export class ChangeTracker<T extends object> {
     else this.dirtyArrays.delete(array);
   }
 
-  private clearDirtyField(id: string, prop: string) {
-    const props = this.dirtyObjectProps.get(id);
+  private clearDirtyField(target: object, prop: string) {
+    const props = this.dirtyObjectProps.get(target);
     if (!props) return;
 
     props.delete(prop);
     if (props.size === 0) {
-      this.dirtyObjectProps.delete(id);
+      this.dirtyObjectProps.delete(target);
     }
   }
 
@@ -159,7 +174,7 @@ export class ChangeTracker<T extends object> {
     if (!node || typeof node !== "object") return;
 
     if (Array.isArray(node)) {
-      this.originalArrays.delete(node);
+      this.originalArrays.delete(this.targetOf(node));
       for (const item of node) {
         this.removeIndexedState(item);
       }
@@ -167,7 +182,7 @@ export class ChangeTracker<T extends object> {
     }
 
     if (node.id) {
-      this.originalObjects.delete(node.id);
+      this.originalObjects.delete(this.targetOf(node));
     }
 
     for (const key in node) {
@@ -177,11 +192,11 @@ export class ChangeTracker<T extends object> {
     }
   }
 
-  private collectLiveState(node: any, ids: Set<string>, arrays: Set<object>) {
+  private collectLiveState(node: any, ids: Set<object>, arrays: Set<object>) {
     if (!node || typeof node !== "object") return;
 
     if (Array.isArray(node)) {
-      arrays.add(node);
+      arrays.add(this.targetOf(node));
       for (const item of node) {
         this.collectLiveState(item, ids, arrays);
       }
@@ -189,7 +204,7 @@ export class ChangeTracker<T extends object> {
     }
 
     if (node.id) {
-      ids.add(node.id);
+      ids.add(this.targetOf(node));
     }
 
     for (const key in node) {
@@ -200,7 +215,7 @@ export class ChangeTracker<T extends object> {
   }
 
   private pruneDirtyState() {
-    const liveIds = new Set<string>();
+    const liveIds = new Set<object>();
     const liveArrays = new Set<object>();
 
     this.collectLiveState(this.state, liveIds, liveArrays);
@@ -221,11 +236,11 @@ export class ChangeTracker<T extends object> {
     }
   }
 
-  private traverse(node: any, map: Map<string, any>) {
+  private traverse(node: any, map: Map<object, any>) {
     if (Array.isArray(node)) {
       for (const child of node) this.traverse(child, map);
     } else if (node && typeof node === "object") {
-      if (node.id) map.set(node.id, node);
+      if (node.id) map.set(this.targetOf(node), node);
       for (const key in node) {
         const child = node[key];
         if (typeof child === "object") this.traverse(child, map);
@@ -249,7 +264,7 @@ export class ChangeTracker<T extends object> {
     }
 
     const _ = this.version;
-    const currentMap = new Map<string, any>();
+    const currentMap = new Map<object, any>();
     this.traverse(this.state, currentMap);
 
     const added: any[] = [];
@@ -292,8 +307,8 @@ export class ChangeTracker<T extends object> {
 
   acknowledgeUpdate(object: any, persistedFields?: Record<string, any>) {
     if (!object || !object.id) return;
-    const target = this.reverseProxyCache.get(object) || object;
-    const originalSnapshot = this.originalObjects.get(object.id);
+    const target = this.targetOf(object);
+    const originalSnapshot = this.originalObjects.get(target);
     const fieldEntries = Object.entries(persistedFields ?? {});
 
     if (fieldEntries.length === 0) {
@@ -310,7 +325,7 @@ export class ChangeTracker<T extends object> {
       return;
     }
 
-    const nextOriginalSnapshot = structuredClone(originalSnapshot ?? { id: object.id });
+    const nextOriginalSnapshot = { ...(originalSnapshot ?? { id: object.id }) };
 
     for (const [field, value] of fieldEntries) {
       const previousValue = target[field];
@@ -331,12 +346,13 @@ export class ChangeTracker<T extends object> {
       nextOriginalSnapshot[field] = snapshot[field];
     }
 
-    this.originalObjects.set(object.id, nextOriginalSnapshot);
+    this.snapshotTargets.set(nextOriginalSnapshot, target);
+    this.originalObjects.set(target, nextOriginalSnapshot);
 
     for (const [field] of fieldEntries) {
       this.indexAndLink(target[field], snapshot[field]);
       this.clearDirtyStateFor(target[field]);
-      this.clearDirtyField(object.id, field);
+      this.clearDirtyField(target, field);
     }
 
     this.pruneDirtyState();
@@ -344,21 +360,22 @@ export class ChangeTracker<T extends object> {
   }
 
   acknowledgeNewItem(array: any[], item: any, position: "start" | "end" = "end") {
-    const targetArray = this.reverseProxyCache.get(array) || array;
+    const targetArray = this.targetOf(array);
     if (!this.originalArrays.has(targetArray)) return;
     if (!item || !item.id) return;
 
     const originalIds = this.originalArrays.get(targetArray)!;
-    const snapshot = $state.snapshot(item);
-    const targetItem = this.reverseProxyCache.get(item) || item;
+    // Svelte wraps newly inserted objects; use the actual stored instance.
+    const targetItem = targetArray.find((candidate: any) => candidate?.id === item.id);
+    if (!targetItem) return;
+    const snapshot = $state.snapshot(targetItem);
 
-    this.originalObjects.set(item.id, snapshot);
     this.indexAndLink(targetItem, snapshot);
 
     if (position === "start") {
-      originalIds.unshift(item.id);
+      originalIds.unshift(this.targetOf(targetItem));
     } else {
-      originalIds.push(item.id);
+      originalIds.push(this.targetOf(targetItem));
     }
 
     this.clearDirtyStateFor(snapshot);
@@ -368,27 +385,21 @@ export class ChangeTracker<T extends object> {
   }
 
   acknowledgeDelete(array: any[], itemId: string) {
-    const targetArray = this.reverseProxyCache.get(array) || array;
+    const targetArray = this.targetOf(array);
     if (!this.originalArrays.has(targetArray)) return;
 
     const originalIds = this.originalArrays.get(targetArray)!;
 
-    const index = originalIds.indexOf(itemId);
+    const index = originalIds.findIndex((item) => this.originalObjects.get(item)?.id === itemId);
+    const removed = originalIds[index];
     if (index !== -1) {
       originalIds.splice(index, 1);
     }
 
-    if (this.dirtyObjectProps.has(itemId)) {
-      this.dirtyObjectProps.delete(itemId);
-    }
-
-    if (this.originalObjects.has(itemId)) {
-      const originalSnapshot = this.originalObjects.get(itemId);
+    if (this.originalObjects.has(removed)) {
+      const originalSnapshot = this.originalObjects.get(removed);
       this.clearDirtyStateFor(originalSnapshot);
-    }
-
-    if (this.originalObjects.has(itemId)) {
-      this.originalObjects.delete(itemId);
+      this.removeIndexedState(originalSnapshot);
     }
 
     this.checkArrayStructure(targetArray);
@@ -399,13 +410,13 @@ export class ChangeTracker<T extends object> {
     if (!node || typeof node !== "object") return;
 
     if (Array.isArray(node)) {
-      this.dirtyArrays.delete(node);
+      this.dirtyArrays.delete(this.targetOf(node));
       for (const item of node) {
         this.clearDirtyStateFor(item);
       }
     } else {
       if (node.id) {
-        this.dirtyObjectProps.delete(node.id);
+        this.dirtyObjectProps.delete(this.targetOf(node));
       }
       for (const key in node) {
         if (typeof node[key] === "object") {

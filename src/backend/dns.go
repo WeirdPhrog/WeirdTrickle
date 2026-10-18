@@ -63,7 +63,7 @@ func remainingTTL(deadline, now time.Time) uint32 {
 
 func (a *App) startDNSListeners(ctx context.Context, errChan chan error) {
 	go func() {
-		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", a.Config().DNSProxy.Host.Address, a.Config().DNSProxy.Host.Port))
+		addr, err := net.ResolveUDPAddr("udp", a.Config().DNSProxy.Host.HostPort())
 		if err != nil {
 			errChan <- fmt.Errorf("failed to resolve udp address: %v", err)
 			return
@@ -74,7 +74,7 @@ func (a *App) startDNSListeners(ctx context.Context, errChan chan error) {
 	}()
 
 	go func() {
-		addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", a.Config().DNSProxy.Host.Address, a.Config().DNSProxy.Host.Port))
+		addr, err := net.ResolveTCPAddr("tcp", a.Config().DNSProxy.Host.HostPort())
 		if err != nil {
 			errChan <- fmt.Errorf("failed to resolve tcp address: %v", err)
 			return
@@ -333,9 +333,15 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return false, nil
 	}
+	var matchErr error
 	for _, rule := range g.domainRules() {
 		for _, name := range names {
-			if rule.IsMatch(name) {
+			matched, err := rule.Match(name)
+			if err != nil {
+				matchErr = err
+				continue
+			}
+			if matched {
 				if g.ipset == nil || g.ipsetToLink == nil {
 					return true, fmt.Errorf("routing is not ready")
 				}
@@ -346,5 +352,5 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 			}
 		}
 	}
-	return false, nil
+	return false, matchErr
 }

@@ -32,6 +32,45 @@ async function setup(page: Page, groups = [group()], subscriptions: unknown[] = 
   await expect(page.locator(".group-controls")).toBeVisible();
 }
 
+test("same rule IDs in different groups do not hide unsaved changes", async ({ page }) => {
+  await setup(page, [
+    group([{ ...rule(1), enable: true }]),
+    { ...group([{ ...rule(1), enable: false }]), id: "abcdef13" },
+  ]);
+  await page.locator(".group [data-collapsible-trigger]").first().click();
+  const toggle = page.locator(".group").first().locator(".rule [role=switch]");
+  await toggle.click();
+  await expect(page.locator("#save-changes")).not.toHaveClass(/inactive/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }))),
+    )
+    .toBe(true);
+  await toggle.click();
+  await expect(page.locator("#save-changes")).toHaveClass(/inactive/);
+});
+
+test("moving a same-ID rule between groups keeps the list editable and saveable", async ({
+  page,
+}) => {
+  await setup(page, [
+    group([{ ...rule(1), name: "Moving" }]),
+    { ...group([{ ...rule(1), name: "Existing" }]), id: "abcdef13" },
+  ]);
+  await page.locator(".group [data-collapsible-trigger]").first().click();
+  const groups = page.locator(".group-wrapper");
+  await groups.first().locator(".rule .grip").dragTo(groups.last().locator(".group-header"));
+  await expect(groups.first().locator(".rule")).toHaveCount(0);
+  const rules = groups.last().locator(".rule");
+  await expect(rules).toHaveCount(2);
+  await expect(rules.nth(0).locator(".name input")).toHaveValue("Moving");
+  await expect(rules.nth(1).locator(".name input")).toHaveValue("Existing");
+  expect(await rules.nth(0).getAttribute("data-uuid")).not.toBe(
+    await rules.nth(1).getAttribute("data-uuid"),
+  );
+  await expect(page.locator("#save-changes")).not.toHaveClass(/inactive/);
+});
+
 test("invalid rules outside the current page block saving and retain the unload warning", async ({
   page,
 }) => {

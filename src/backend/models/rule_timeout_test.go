@@ -40,3 +40,15 @@ func TestRegexTimeoutCannotExcludePendingRoutingRule(t *testing.T) {
 		t.Fatal("a pattern that can never compile should not participate")
 	}
 }
+
+func TestRuleMatchReportsTimeoutWithoutPoisoningSubsequentMatches(t *testing.T) {
+	rule := &Rule{Type: RuleTypeRegEx, Rule: `^([a.]+)+$`}
+	// A valid DNS name whose comparison cannot finish within the regex limit.
+	name := strings.Repeat("a.", 50) + "example"
+	if matched, err := rule.Match(name); matched || err == nil {
+		t.Fatalf("timeout was treated as a definite non-match: %t, %v", matched, err)
+	}
+	if matched, err := rule.Match("a.a"); !matched || err != nil {
+		t.Fatalf("later successful match changed: %t, %v", matched, err)
+	}
+}

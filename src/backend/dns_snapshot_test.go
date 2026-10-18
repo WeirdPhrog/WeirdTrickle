@@ -2,6 +2,7 @@ package magitrickle
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,32 @@ import (
 	"github.com/miekg/dns"
 	"github.com/vishvananda/netlink"
 )
+
+func TestRegexTimeoutWithholdsDNSAddresses(t *testing.T) {
+	a := &App{config: constant.DefaultAppConfig, recordsCache: recordsCache.New()}
+	if err := a.AddGroup(&models.Group{Enable: true, Rules: []*models.Rule{
+		{Type: models.RuleTypeRegEx, Rule: `^([a.]+)+$`, Enable: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	a.userRuleSets[0].enabled.Store(true)
+	for _, name := range []string{strings.Repeat("a.", 50) + "example", "unrelated.example"} {
+		query := new(dns.Msg).SetQuestion(name+".", dns.TypeA)
+		reply := new(dns.Msg).SetReply(query)
+		reply.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: name + ".", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IPv4(192, 0, 2, 1).To4()}}
+		response, err := a.dnsResponseHook(nil, *query, *reply, "udp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "unrelated.example" {
+			if response != nil {
+				t.Fatal("a completed non-match blocked an unrelated domain")
+			}
+		} else if response == nil || response.Rcode != dns.RcodeServerFailure || len(response.Answer) != 0 {
+			t.Fatalf("an inconclusive regex allowed an address through: %v", response)
+		}
+	}
+}
 
 func TestUnrelatedDNSDoesNotWaitForRoutingUpdate(t *testing.T) {
 	a := &App{config: constant.DefaultAppConfig, recordsCache: recordsCache.New()}

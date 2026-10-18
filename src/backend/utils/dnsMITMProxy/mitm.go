@@ -1,11 +1,14 @@
 package dnsMITMProxy
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,7 +126,7 @@ func (p *DNSMITMProxy) requestUpstreamDNS(ctx context.Context, req []byte, netwo
 		}
 		if !matchesDNSResponse(req, resp) {
 			_ = upstreamConn.Close()
-			return nil, fmt.Errorf("unexpected DNS response header or transaction ID")
+			return nil, fmt.Errorf("unexpected DNS response header, transaction ID or question")
 		}
 	} else {
 		bufPtr := p.bufferPool.Get().(*[]byte)
@@ -153,7 +156,25 @@ func (p *DNSMITMProxy) requestUpstreamDNS(ctx context.Context, req []byte, netwo
 }
 
 func matchesDNSResponse(req, resp []byte) bool {
-	return len(resp) >= 12 && resp[2]&0x80 != 0 && req[0] == resp[0] && req[1] == resp[1]
+	if len(req) < 12 || len(resp) < 12 || resp[2]&0x80 == 0 ||
+		!bytes.Equal(req[:2], resp[:2]) || req[2]&0x78 != resp[2]&0x78 ||
+		!bytes.Equal(req[4:6], resp[4:6]) {
+		return false
+	}
+	// Clients can reuse a transaction ID for another domain or record type.
+	// Compare questions before accepting a reply from a reused socket, without
+	// unpacking all resource records a second time on the normal response path.
+	reqOffset, respOffset := 12, 12
+	for range binary.BigEndian.Uint16(req[4:6]) {
+		reqName, nextReq, reqErr := dns.UnpackDomainName(req, reqOffset)
+		respName, nextResp, respErr := dns.UnpackDomainName(resp, respOffset)
+		if reqErr != nil || respErr != nil || nextReq+4 > len(req) || nextResp+4 > len(resp) ||
+			!strings.EqualFold(reqName, respName) || !bytes.Equal(req[nextReq:nextReq+4], resp[nextResp:nextResp+4]) {
+			return false
+		}
+		reqOffset, respOffset = nextReq+4, nextResp+4
+	}
+	return true
 }
 
 func (p *DNSMITMProxy) processReq(ctx context.Context, clientAddr net.Addr, req []byte, network string) ([]byte, error) {

@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"runtime/debug"
-	"strconv"
 	"time"
 
 	"magitrickle/api"
@@ -48,7 +46,7 @@ func (a *App) Start(ctx context.Context) (err error) {
 	defer cancel()
 
 	a.dnsMITM = dnsMITMProxy.NewDNSMITMProxy(
-		net.JoinHostPort(a.Config().DNSProxy.Upstream.Address, strconv.Itoa(int(a.Config().DNSProxy.Upstream.Port))),
+		a.Config().DNSProxy.Upstream.HostPort(),
 		a.Config().DNSProxy.MaxIdleConns,
 		a.Config().DNSProxy.MaxConcurrent,
 		a.Config().DNSProxy.Timeout,

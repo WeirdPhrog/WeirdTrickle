@@ -59,48 +59,48 @@ func (d *Rule) Compile() error {
 }
 
 func (d *Rule) IsMatch(domainName string) bool {
+	matched, _ := d.Match(domainName)
+	return matched
+}
+
+// Match reports runtime regex errors so routing can fail closed on an
+// inconclusive comparison. Invalid/unknown rules remain definite non-matches.
+func (d *Rule) Match(domainName string) (bool, error) {
 	switch d.Type {
 	case RuleTypeDomain:
-		return strings.EqualFold(domainName, d.Rule)
+		return strings.EqualFold(domainName, d.Rule), nil
 
 	case RuleTypeNamespace:
 		if strings.EqualFold(domainName, d.Rule) {
-			return true
+			return true, nil
 		}
 
 		ruleLen := len(d.Rule)
 		domainLen := len(domainName)
 		if domainLen < ruleLen+1 {
-			return false
+			return false, nil
 		}
-		return domainName[domainLen-ruleLen-1] == '.' && strings.EqualFold(domainName[domainLen-ruleLen:], d.Rule)
+		return domainName[domainLen-ruleLen-1] == '.' && strings.EqualFold(domainName[domainLen-ruleLen:], d.Rule), nil
 
 	case RuleTypeWildcard:
-		return wildcard.Match(strings.ToLower(d.Rule), strings.ToLower(domainName))
+		return wildcard.Match(strings.ToLower(d.Rule), strings.ToLower(domainName)), nil
 
 	case RuleTypeRegEx:
 		err := d.Compile()
 		if err != nil {
-			return false
+			return false, nil
 		}
-		ok, _ := d.compiled(domainName)
-		return ok
+		return d.compiled(domainName)
 
 	case RuleTypeSubnet, RuleTypeSubnet6:
-		return false
+		return false, nil
 	}
-	return false
+	return false, nil
 }
 
 // MayMatch is a conservative prefilter, not a routing decision. A regex
 // timeout is inconclusive and must not let a DNS answer bypass an update lock.
 func (d *Rule) MayMatch(domainName string) bool {
-	if d.Type != RuleTypeRegEx {
-		return d.IsMatch(domainName)
-	}
-	if err := d.Compile(); err != nil {
-		return false
-	}
-	ok, err := d.compiled(domainName)
+	ok, err := d.Match(domainName)
 	return ok || err != nil
 }

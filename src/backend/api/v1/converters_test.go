@@ -3,12 +3,57 @@ package v1
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"testing"
 
 	"magitrickle/api/v1/types"
 	"magitrickle/models"
 	"magitrickle/utils/intID"
 )
+
+func TestOmittedOptionalFieldsPreserveExistingSettings(t *testing.T) {
+	group := &models.Group{Enable: false}
+	updatedGroup, err := GroupFromReq(types.GroupReq{Name: "Renamed"}, group)
+	if err != nil || updatedGroup.Enable {
+		t.Fatalf("omitting enable re-enabled the group: %+v, %v", updatedGroup, err)
+	}
+	sub := &models.Subscription{Enable: false, Interval: 86400, LastCheck: 123, LastUpdate: 100}
+	updatedSub, err := SubscriptionFromReq(types.SubscriptionReq{URL: "https://example.com/list"}, sub)
+	if err != nil || updatedSub.Enable || updatedSub.Interval != sub.Interval {
+		t.Fatalf("omitted subscription fields were reset: %+v, %v", updatedSub, err)
+	}
+	enabled, stopped := true, uint32(0)
+	updatedSub, err = SubscriptionFromReq(types.SubscriptionReq{Enable: &enabled, Interval: &stopped}, sub)
+	if err != nil || !updatedSub.Enable || updatedSub.Interval != 0 {
+		t.Fatalf("explicit enable/zero interval was ignored: %+v, %v", updatedSub, err)
+	}
+	createdGroup, _ := GroupFromReq(types.GroupReq{}, nil)
+	createdSub, _ := SubscriptionFromReq(types.SubscriptionReq{}, nil)
+	if !createdGroup.Enable || !createdSub.Enable || sub.Enable || sub.Interval != 86400 {
+		t.Fatal("creation defaults or the original model changed")
+	}
+}
+
+func TestRoutingInterfaceInputsCannotInjectIPTablesArguments(t *testing.T) {
+	for _, name := range []string{"wg0\nCOMMIT\n*filter", "wg0 -j ACCEPT", "../wg0", "wg0\x00", strings.Repeat("w", 16), ".", ".."} {
+		t.Run(fmt.Sprintf("%q", name), func(t *testing.T) {
+			if _, err := GroupFromReq(types.GroupReq{Interface: name}, nil); err == nil {
+				t.Fatal("accepted unsafe group interface")
+			}
+			if _, err := SubscriptionFromReq(types.SubscriptionReq{Interface: name}, nil); err == nil {
+				t.Fatal("accepted unsafe subscription interface")
+			}
+		})
+	}
+	for _, name := range []string{"", "blackhole", "opkgtun10", "wg-down", "ppp.1"} {
+		if _, err := GroupFromReq(types.GroupReq{Interface: name}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := SubscriptionFromReq(types.SubscriptionReq{Interface: name}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func bulkRuleFixture(count int) (*models.Group, types.GroupReq, *models.Subscription, types.SubscriptionReq) {
 	group := &models.Group{ID: intID.ID{1}, Rules: make([]*models.Rule, count)}
