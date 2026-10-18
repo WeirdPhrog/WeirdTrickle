@@ -45,9 +45,23 @@ test.describe("Header Settings", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("About", { exact: true })).toBeVisible();
 
-    // Check for some content
-    await expect(dialog.locator("text=Official website")).toBeVisible();
-    await expect(dialog.locator("text=Bug Tracker")).toBeVisible();
+    const issueLink = dialog.locator('a[href="https://github.com/WeirdPhrog/WeirdTrickle/issues"]');
+    await expect(issueLink).toBeVisible();
+    await expect(issueLink.locator("..")).toContainText("Report a WeirdTrickle issue");
+    await expect(issueLink).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(
+      dialog.getByRole("heading", { name: "Original MagiTrickle project" }),
+    ).toBeVisible();
+    await expect(dialog.getByText("Official website")).toBeVisible();
+    await expect(dialog.getByText("MagiTrickle Bug Tracker")).toBeVisible();
+
+    // The taller About dialog must stay usable on a phone in landscape.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect(dialog.getByText("About", { exact: true })).toBeInViewport();
+    await expect(dialog.locator("[data-dialog-close]")).toBeInViewport();
+    const build = dialog.locator(".build");
+    await build.scrollIntoViewIfNeeded();
+    await expect(build).toBeInViewport();
 
     // Close dialog
     await page.keyboard.press("Escape");

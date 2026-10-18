@@ -58,6 +58,10 @@ jobs:
           go vet -tags testing ./...
           test -z "$(gofmt -l .)"
           go test -race -tags 'testing entware entware_kn' ./internal/interfaces
+      - name: Check generated API documentation
+        run: |
+          make swagger
+          git diff --exit-code -- docs/swagger.yaml
       - name: Large rule list benchmarks
         working-directory: src/backend
         run: go test -tags testing -run '^$' -bench 'Benchmark(DNSRuleScan|BulkRuleConversion)$' -benchtime=100ms . ./api/v1
@@ -196,17 +200,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          cat > /tmp/release-notes <<'EOF'
-          WeirdTrickle uses MAJOR.MINOR.PATCH versions. Existing MagiTrickle configuration, package identity and service paths are preserved for upgrades.
-
-          To migrate from a 2026.x.x.x release, run the current installer once: the old updater does not understand three-part versions. The installer handles the version transition, verifies the package checksum and backs up the configuration.
-
-          Installation: https://github.com/WeirdPhrog/WeirdTrickle#установка-из-этого-форка-keenetic--netcraze--entware
-
-          Future updates: `weirdtrickle-update`. The compatibility command `magitrickle-update` is also included. Feature changes and routing guarantees are documented in README.md.
-
-          CI includes unit/race tests, large-list benchmarks, real IPv4/IPv6 LAN forwarding with WAN leak counters on iptables legacy/nft, a 65537-entry ipset, DNS routing failure tests, route-restoration tests, installer tests, frontend checks and router package builds. These tests run in isolated Linux namespaces, not on a physical Keenetic/Netcraze router.
-          EOF
+          python3 scripts/release_version.py --notes > /tmp/release-notes
           if gh release view "v$VERSION" --json isDraft >/dev/null 2>&1; then
             test "$(gh release view "v$VERSION" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
             if [ "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = false ]; then

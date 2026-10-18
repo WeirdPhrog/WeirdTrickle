@@ -116,7 +116,7 @@ func (a *App) loadConfig(filename string) error {
 			applyIfSet(&a.config.DNSProxy.MaxIdleConns, cfg.App.DNSProxy.MaxIdleConns)
 			applyIfSet(&a.config.DNSProxy.MaxConcurrent, cfg.App.DNSProxy.MaxConcurrent)
 			if cfg.App.DNSProxy.Timeout != nil {
-				// TODO: Remove this align to milliseconds before release 1.0.0
+				// Preserve legacy configs that stored a bare millisecond count.
 				t := *cfg.App.DNSProxy.Timeout
 				if t < time.Millisecond {
 					t *= time.Millisecond
@@ -132,7 +132,7 @@ func (a *App) loadConfig(filename string) error {
 			if cfg.App.Netfilter.IPSet != nil {
 				applyIfSet(&a.config.Netfilter.IPSet.TablePrefix, cfg.App.Netfilter.IPSet.TablePrefix)
 				if cfg.App.Netfilter.IPSet.AdditionalTTL != nil {
-					// TODO: Remove this align to seconds before release 1.0.0
+					// Preserve legacy configs that stored a bare second count.
 					t := *cfg.App.Netfilter.IPSet.AdditionalTTL
 					if t < time.Second {
 						t *= time.Second

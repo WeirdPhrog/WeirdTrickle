@@ -15,7 +15,7 @@
 </script>
 
 <GenericDialog {open} title={t("About")} on:close={() => (open = false)} maxWidth={420}>
-  <div slot="body">
+  <div slot="body" class="about-body">
     <div class="container">
       <div class="block">
         <div class="icon">
@@ -33,6 +33,21 @@
       </div>
       <div class="block">
         <div class="icon">
+          <Bug size={22} />
+        </div>
+        <div class="text">
+          {t("Report a WeirdTrickle issue")}
+          <a
+            target="_blank"
+            rel="noopener noreferrer"
+            href="https://github.com/WeirdPhrog/WeirdTrickle/issues"
+            >https://github.com/WeirdPhrog/WeirdTrickle/issues</a
+          >
+        </div>
+      </div>
+      <h3>{t("Original MagiTrickle project")}</h3>
+      <div class="block">
+        <div class="icon">
           <Globe size={22} />
         </div>
         <div class="text">
@@ -48,7 +63,7 @@
           <Bug size={22} />
         </div>
         <div class="text">
-          {t("Bug Tracker")}
+          {t("MagiTrickle Bug Tracker")}
           <a
             target="_blank"
             rel="noopener noreferrer"
@@ -87,10 +102,10 @@
           <Sponsorship size={22} />
         </div>
         <div class="text">
-           {t("Financial Contributions")}
-           <a target="_blank" rel="noopener noreferrer" href="https://boosty.to/magitrickle">
-             https://boosty.to/magitrickle
-           </a>
+          {t("Financial Contributions")}
+          <a target="_blank" rel="noopener noreferrer" href="https://boosty.to/magitrickle">
+            https://boosty.to/magitrickle
+          </a>
         </div>
       </div>
     </div>
@@ -101,6 +116,12 @@
 </GenericDialog>
 
 <style>
+  .about-body {
+    max-height: calc(100vh - 8rem);
+    max-height: calc(100dvh - 8rem);
+    overflow-y: auto;
+  }
+
   a {
     display: block;
     font-size: smaller;
@@ -129,6 +150,13 @@
     flex-direction: row;
     align-items: center;
     gap: 0.6rem;
+  }
+
+  h3 {
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-2);
   }
 
   .text {
