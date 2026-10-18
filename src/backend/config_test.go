@@ -15,6 +15,21 @@ import (
 	"magitrickle/utils/intID"
 )
 
+func TestShippedDefaultConfigsLoad(t *testing.T) {
+	for _, platform := range []string{"common", "openwrt"} {
+		t.Run(platform, func(t *testing.T) {
+			filename := filepath.Join("..", "..", "files", platform, "var", "lib", "magitrickle", "config.yaml")
+			loaded := &App{config: constant.DefaultAppConfig}
+			if err := loaded.loadConfig(filename); err != nil {
+				t.Fatalf("fresh installation cannot load %s: %v", filename, err)
+			}
+			if len(loaded.userRuleSets) == 0 {
+				t.Fatal("shipped example group was not loaded")
+			}
+		})
+	}
+}
+
 func TestConfigRoundTripAcrossForkVersions(t *testing.T) {
 	a := &App{config: constant.DefaultAppConfig}
 	group := &models.Group{ID: intID.ID{1}, Name: "exception", Interface: "nwg1", Enable: true, Color: "#112233", Rules: []*models.Rule{{ID: intID.ID{2}, Type: models.RuleTypeDomain, Rule: "example.com", Enable: true}}}

@@ -35,7 +35,7 @@ func TestOmittedOptionalFieldsPreserveExistingSettings(t *testing.T) {
 }
 
 func TestRoutingInterfaceInputsCannotInjectIPTablesArguments(t *testing.T) {
-	for _, name := range []string{"wg0\nCOMMIT\n*filter", "wg0 -j ACCEPT", "../wg0", "wg0\x00", strings.Repeat("w", 16), ".", ".."} {
+	for _, name := range []string{"wg0\nCOMMIT\n*filter", "wg0 -j ACCEPT", "../wg0", "wg0\x00", "wg0:1", strings.Repeat("w", 16), ".", ".."} {
 		t.Run(fmt.Sprintf("%q", name), func(t *testing.T) {
 			if _, err := GroupFromReq(types.GroupReq{Interface: name}, nil); err == nil {
 				t.Fatal("accepted unsafe group interface")

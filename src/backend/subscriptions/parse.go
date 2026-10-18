@@ -1,48 +1,88 @@
 package subscriptions
 
 import (
+	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"magitrickle/models"
 	"magitrickle/utils/intID"
+
+	"golang.org/x/net/idna"
 )
 
 func ParseRules(list string) []*models.SubscriptionRule {
 	rules := make([]*models.SubscriptionRule, 0)
-	parts := strings.FieldsFunc(list, func(r rune) bool {
-		return r == '\n' || r == ',' || r == '\r'
+	lines := strings.FieldsFunc(list, func(r rune) bool {
+		return r == '\n' || r == '\r'
 	})
-	seenRules := make(map[string]struct{}, len(parts))
-	usedRuleIDs := make(map[[4]byte]struct{}, len(parts))
+	seenRules := make(map[string]struct{}, len(lines))
+	usedRuleIDs := make(map[[4]byte]struct{}, len(lines))
 
-	for _, part := range parts {
-		line := strings.TrimSpace(part)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	for _, line := range lines {
+		// Remove comments before splitting comma-separated entries: commas in
+		// a comment must not turn into new routing rules.
+		line, _, _ = strings.Cut(line, "#")
+		for _, part := range strings.Split(line, ",") {
+			pattern := normalizeSubscriptionRule(part)
+			if pattern == "" {
+				continue
+			}
+
+			ruleType := detectSubscriptionRuleType(pattern)
+			key := ruleType + "|" + pattern
+			if _, exists := seenRules[key]; exists {
+				continue
+			}
+			seenRules[key] = struct{}{}
+
+			rules = append(rules, &models.SubscriptionRule{
+				ID:     nextUniqueRuleID(usedRuleIDs),
+				Rule:   pattern,
+				Type:   ruleType,
+				Enable: true,
+			})
 		}
-
-		ruleType := detectSubscriptionRuleType(line)
-		key := ruleType + "|" + line
-		if _, exists := seenRules[key]; exists {
-			continue
-		}
-		seenRules[key] = struct{}{}
-
-		rules = append(rules, &models.SubscriptionRule{
-			ID:     nextUniqueRuleID(usedRuleIDs),
-			Rule:   line,
-			Type:   ruleType,
-			Enable: true,
-		})
 	}
 
 	return rules
 }
 
-func RefreshRules(list string, existing []*models.SubscriptionRule) []*models.SubscriptionRule {
+func normalizeSubscriptionRule(pattern string) string {
+	pattern = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(pattern), "\ufeff"))
+	original := pattern
+	domainNotation := !strings.ContainsAny(pattern, "*?") && (strings.HasPrefix(pattern, ".") || strings.HasSuffix(pattern, "."))
+	// A leading dot denotes a namespace in plain domain lists. Do not strip
+	// it from wildcard/unsupported expressions and change their meaning.
+	if !strings.ContainsAny(pattern, "*?") {
+		pattern = strings.TrimPrefix(pattern, ".")
+		pattern = strings.TrimSuffix(pattern, ".")
+	}
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] >= utf8.RuneSelf {
+			ascii, err := idna.Lookup.ToASCII(pattern)
+			if err != nil {
+				return original
+			}
+			pattern = ascii
+			break
+		}
+	}
+	// Domain notation must not turn malformed IP/CIDR input into a network
+	// routing rule, or reinterpret an ambiguous numeric domain as an IP.
+	if domainNotation && (!isValidNamespace(pattern) || isValidSubnet(pattern)) {
+		return original
+	}
+	if pattern != original && detectSubscriptionRuleType(pattern) == "" {
+		return original
+	}
+	return strings.ToLower(pattern)
+}
+
+func RefreshRules(list string, existing []*models.SubscriptionRule) ([]*models.SubscriptionRule, error) {
 	parsed := ParseRules(list)
 	if len(parsed) == 0 {
-		return parsed
+		return parsed, nil
 	}
 
 	existingByRule := make(map[string]*models.SubscriptionRule, len(existing))
@@ -50,10 +90,16 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) []*models.Su
 		if rule == nil || rule.Rule == "" {
 			continue
 		}
-		if _, exists := existingByRule[rule.Rule]; exists {
+		key := normalizeSubscriptionRule(rule.Rule)
+		if old := existingByRule[key]; old != nil {
+			// Canonical aliases may carry different user overrides. Choosing
+			// one silently could disable previously effective routing.
+			if old.Rule != rule.Rule && (old.Type != rule.Type || old.Enable != rule.Enable) {
+				return nil, fmt.Errorf("conflicting overrides for normalized subscription rule %q; retaining the previous rules", key)
+			}
 			continue
 		}
-		existingByRule[rule.Rule] = rule
+		existingByRule[key] = rule
 	}
 
 	usedRuleIDs := make(map[[4]byte]struct{}, len(parsed))
@@ -76,7 +122,7 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) []*models.Su
 		usedRuleIDs[rule.ID] = struct{}{}
 	}
 
-	return parsed
+	return parsed, nil
 }
 
 type subscriptionRuleState struct {

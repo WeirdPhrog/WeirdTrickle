@@ -157,9 +157,26 @@ func (p *DNSMITMProxy) requestUpstreamDNS(ctx context.Context, req []byte, netwo
 
 func matchesDNSResponse(req, resp []byte) bool {
 	if len(req) < 12 || len(resp) < 12 || resp[2]&0x80 == 0 ||
-		!bytes.Equal(req[:2], resp[:2]) || req[2]&0x78 != resp[2]&0x78 ||
-		!bytes.Equal(req[4:6], resp[4:6]) {
+		!bytes.Equal(req[:2], resp[:2]) || req[2]&0x78 != resp[2]&0x78 {
 		return false
+	}
+	if !bytes.Equal(req[4:6], resp[4:6]) {
+		// A resolver may omit an unparseable question in an error reply.
+		// Accept only errors without answer/authority data; positive and
+		// question-bearing replies still require the exact original question.
+		if binary.BigEndian.Uint16(resp[4:6]) != 0 || resp[3]&0xf == dns.RcodeSuccess {
+			return false
+		}
+		var reply dns.Msg
+		if err := reply.Unpack(resp); err != nil || len(reply.Answer) != 0 || len(reply.Ns) != 0 {
+			return false
+		}
+		for _, record := range reply.Extra {
+			if _, ok := record.(*dns.OPT); !ok {
+				return false
+			}
+		}
+		return true
 	}
 	// Clients can reuse a transaction ID for another domain or record type.
 	// Compare questions before accepting a reply from a reused socket, without

@@ -208,6 +208,20 @@ func TestDNSResponseQuestionMatching(t *testing.T) {
 		{"different opcode", func(m *dns.Msg) { m.Opcode = dns.OpcodeStatus }, false},
 		{"missing question", func(m *dns.Msg) { m.Question = nil }, false},
 		{"failure with matching question", func(m *dns.Msg) { m.Rcode = dns.RcodeServerFailure }, true},
+		{"FORMERR without question", func(m *dns.Msg) { m.Question = nil; m.Rcode = dns.RcodeFormatError }, true},
+		{"NOTIMP without question", func(m *dns.Msg) { m.Question = nil; m.Rcode = dns.RcodeNotImplemented }, true},
+		{"REFUSED without question", func(m *dns.Msg) { m.Question = nil; m.Rcode = dns.RcodeRefused; m.SetEdns0(1232, false) }, true},
+		{"failure with wrong question", func(m *dns.Msg) { m.Rcode = dns.RcodeServerFailure; m.Question[0].Name = "other.example." }, false},
+		{"questionless error with answer", func(m *dns.Msg) {
+			m.Question = nil
+			m.Rcode = dns.RcodeRefused
+			m.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET}, A: net.IPv4(192, 0, 2, 1)}}
+		}, false},
+		{"questionless error with additional address", func(m *dns.Msg) {
+			m.Question = nil
+			m.Rcode = dns.RcodeRefused
+			m.Extra = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET}, A: net.IPv4(192, 0, 2, 1)}}
+		}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reply := new(dns.Msg).SetReply(query)

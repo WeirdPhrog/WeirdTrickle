@@ -158,8 +158,8 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 		}
 		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
 	}
-	refreshed, rulesChanged := subscriptions.PlanRefresh(existingRules, list)
-	if err := subscriptions.ValidateRules(refreshed); err != nil {
+	refreshed, rulesChanged, err := subscriptions.PlanRefresh(existingRules, list)
+	if err != nil {
 		a.subscriptionFailed(id, fetchURL, now.Add(time.Since(started)))
 		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
 	}
@@ -261,8 +261,8 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 			log.Error().Err(err).Str("subscription", item.id.String()).Msg("failed to fetch subscription")
 			continue
 		}
-		refreshed, changed := subscriptions.PlanRefresh(item.existingRules, list)
-		if err := subscriptions.ValidateRules(refreshed); err != nil {
+		refreshed, changed, err := subscriptions.PlanRefresh(item.existingRules, list)
+		if err != nil {
 			a.subscriptionFailed(item.id, item.url, now.Add(time.Since(started)))
 			log.Error().Err(err).Str("subscription", item.id.String()).Msg("invalid subscription rules; retaining the previous list")
 			continue

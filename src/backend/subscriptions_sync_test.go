@@ -2,15 +2,58 @@ package magitrickle
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"magitrickle/app"
 	"magitrickle/models"
 	"magitrickle/utils/intID"
 )
+
+func TestEmptyDownloadedSubscriptionRetainsRulesAndBacksOff(t *testing.T) {
+	for _, body := range []string{"", " \r\n\t", "# temporarily empty, try later\n"} {
+		t.Run(body, func(t *testing.T) {
+			var requests atomic.Int32
+			var recovered atomic.Bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if recovered.Load() {
+					_, _ = w.Write([]byte("old.example\n"))
+				} else {
+					_, _ = w.Write([]byte(body))
+				}
+			}))
+			defer server.Close()
+			id := intID.ID{1}
+			rule := &models.SubscriptionRule{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: false}
+			sub := &models.Subscription{ID: id, URL: server.URL, Enable: true, Interval: 60, LastCheck: 1, LastUpdate: 1, Rules: []*models.SubscriptionRule{rule}}
+			a := &App{subscriptions: []*models.Subscription{sub}}
+			now := time.Unix(1800000000, 0)
+			for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
+				if changed, err := a.SyncDueSubscriptions(now.Add(offset)); changed || err != nil {
+					t.Fatalf("empty auto-refresh changed routing: %t, %v", changed, err)
+				}
+			}
+			if _, changed, err := a.SyncSubscriptionByID(id, now.Add(2*time.Minute), ""); !errors.Is(err, app.ErrSubscriptionFetch) || changed {
+				t.Fatalf("empty manual refresh succeeded: %t, %v", changed, err)
+			}
+			if requests.Load() != 3 || a.subscriptionRetries[id].delay != 4*time.Minute || len(sub.Rules) != 1 || sub.Rules[0] != rule || sub.LastCheck != 1 || sub.LastUpdate != 1 {
+				t.Fatal("empty response lost rules, timestamps, or retry backoff")
+			}
+			recovered.Store(true)
+			if _, _, err := a.SyncSubscriptionByID(id, now.Add(2*time.Minute), ""); err != nil {
+				t.Fatal(err)
+			}
+			if requests.Load() != 4 || len(a.subscriptionRetries) != 0 || sub.Rules[0] != rule {
+				t.Fatal("manual recovery did not retain overrides and clear backoff")
+			}
+		})
+	}
+}
 
 func TestSubscriptionFailureBackoffPreservesRulesAndAllowsManualSync(t *testing.T) {
 	var requests atomic.Int32

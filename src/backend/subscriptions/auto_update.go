@@ -1,6 +1,7 @@
 package subscriptions
 
 import (
+	"fmt"
 	"time"
 
 	"magitrickle/models"
@@ -20,8 +21,17 @@ func IsDue(sub *models.Subscription, now time.Time) bool {
 	return true
 }
 
-func PlanRefresh(currentRules []*models.SubscriptionRule, list string) (refreshed []*models.SubscriptionRule, changed bool) {
-	refreshed = RefreshRules(list, currentRules)
+func PlanRefresh(currentRules []*models.SubscriptionRule, list string) (refreshed []*models.SubscriptionRule, changed bool, err error) {
+	refreshed, err = RefreshRules(list, currentRules)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(refreshed) == 0 && len(currentRules) != 0 {
+		return nil, false, fmt.Errorf("empty subscription response; retaining the previous rules")
+	}
+	if err := ValidateRules(refreshed); err != nil {
+		return nil, false, err
+	}
 	changed = !sameRules(currentRules, refreshed)
-	return refreshed, changed
+	return refreshed, changed, nil
 }

@@ -15,6 +15,7 @@ import (
 	"magitrickle/utils/recordsCache"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
@@ -161,6 +162,8 @@ func (a *App) Start(ctx context.Context) (err error) {
 		<-autoDone
 	}()
 
+	restoreTicker := time.NewTicker(time.Minute)
+	defer restoreTicker.Stop()
 	for {
 		select {
 		case event, ok := <-linkUpdateChannel:
@@ -175,6 +178,10 @@ func (a *App) Start(ctx context.Context) (err error) {
 			a.handleAddr(event)
 		case err := <-errChan:
 			return err
+		case <-restoreTicker.C:
+			if err := a.retryRoutingRestores(); err != nil {
+				log.Error().Err(err).Msg("failed to restore suspended routing; will retry")
+			}
 		case <-ctx.Done():
 			return nil
 		}
