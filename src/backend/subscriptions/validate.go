@@ -2,14 +2,13 @@ package subscriptions
 
 import (
 	"net/netip"
+	"regexp"
 	"strings"
-
-	"github.com/dlclark/regexp2"
 )
 
 var (
-	domainCharRe   = regexp2.MustCompile(`^[a-zA-Z0-9-.]+$`, 0)
-	wildcardCharRe = regexp2.MustCompile(`^[a-zA-Z0-9\-.*?]+$`, 0)
+	domainCharRe   = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
+	wildcardCharRe = regexp.MustCompile(`^[a-zA-Z0-9\-.*?]+$`)
 )
 
 func isValidWildcard(pattern string) bool {
@@ -22,8 +21,7 @@ func isValidWildcard(pattern string) bool {
 	if strings.Contains(pattern, "..") || strings.Contains(pattern, "**") {
 		return false
 	}
-	ok, _ := wildcardCharRe.MatchString(pattern)
-	return ok
+	return wildcardCharRe.MatchString(pattern)
 }
 
 func isValidDomain(pattern string) bool {
@@ -36,8 +34,7 @@ func isValidDomain(pattern string) bool {
 	if strings.Contains(pattern, "..") {
 		return false
 	}
-	ok, _ := domainCharRe.MatchString(pattern)
-	return ok
+	return domainCharRe.MatchString(pattern)
 }
 
 func isValidNamespace(pattern string) bool {
@@ -61,9 +58,4 @@ func parseSubnetAddress(pattern string) (netip.Addr, bool) {
 	}
 	addr, err := netip.ParseAddr(pattern)
 	return addr, err == nil && addr.Zone() == ""
-}
-
-func isValidRegex(pattern string) bool {
-	re, err := regexp2.Compile(pattern, 0)
-	return err == nil && re != nil
 }

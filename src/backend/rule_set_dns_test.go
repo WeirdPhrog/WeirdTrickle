@@ -29,7 +29,7 @@ func TestDNSRulesTrackGroupEditsAndExcludeSubnetRules(t *testing.T) {
 		t.Fatal("filtering DNS rules removed configured IP rules")
 	}
 	updated := *group
-	updated.Rules = []*models.Rule{{Type: models.RuleTypeRegEx, Rule: "^new\\.example$", Enable: true}}
+	updated.Rules = []*models.Rule{{Type: models.RuleTypeDomain, Rule: "new.example", Enable: true}}
 	if err := g.updateModel(&updated); err != nil {
 		t.Fatal(err)
 	}

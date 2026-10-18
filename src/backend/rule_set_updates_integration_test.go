@@ -214,21 +214,6 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	}
 	assertEgress("mtother")
 	// A bad replacement must preserve both old address families.
-	// An old regex can start timing out only after a new DNS name is cached.
-	// Failed edits must restore actual memberships and egress without re-running
-	// that regex during rollback or disrupting the unrelated subscription.
-	withRegex := *group
-	withRegex.Rules = append(append([]*models.Rule(nil), group.Rules...), &models.Rule{ID: intID.ID{26}, Type: models.RuleTypeRegEx, Rule: `^([a.]+)+$`, Enable: true})
-	check(a.UpdateGroup(&withRegex))
-	a.recordsCache.AddAddress(strings.Repeat("a.", 50)+"example", net.IPv4(192, 0, 2, 40).To4(), 120)
-	failedEdit := withRegex
-	failedEdit.Rules = append(append([]*models.Rule(nil), withRegex.Rules...), &models.Rule{ID: intID.ID{27}, Type: models.RuleTypeSubnet, Rule: "203.0.113.0/24", Enable: true})
-	if err := a.UpdateGroup(&failedEdit); err == nil {
-		t.Fatal("inconclusive regex unexpectedly allowed an edit")
-	}
-	assertEgress("mtother")
-	check(a.UpdateGroup(group))
-
 	if err := g.ipset.Replace(map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout{{Address: [4]byte{198, 18, 0, 1}, CIDR: 32}: nil}, map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout{{CIDR: 255}: nil}); err == nil {
 		t.Fatal("invalid replacement unexpectedly succeeded")
 	}

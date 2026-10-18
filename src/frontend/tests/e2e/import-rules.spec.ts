@@ -55,7 +55,7 @@ test.describe("Import Rules Dialog", () => {
     // Type rules
     const rulesText = `example.com
 192.168.1.1
-/regex/`;
+*.example.net`;
     await textarea.fill(rulesText);
     await textarea.blur();
 
@@ -64,7 +64,7 @@ test.describe("Import Rules Dialog", () => {
     // Check badges in results view specifically (avoid count badges in stats)
     await expect(dialog.locator(".results-view .badge", { hasText: "namespace" })).toBeVisible();
     await expect(dialog.locator(".results-view .badge", { hasText: "IPv4" })).toBeVisible();
-    await expect(dialog.locator(".results-view .badge", { hasText: "regex" })).toBeVisible();
+    await expect(dialog.locator(".results-view .badge", { hasText: "wildcard" })).toBeVisible();
 
     // Check stats (counts)
     await expect(dialog.locator(".count-badge", { hasText: "namespace" })).toContainText("1");
@@ -82,7 +82,7 @@ test.describe("Import Rules Dialog", () => {
     // pattern input has class .pattern-input
     await expect(page.locator(".rule .pattern-input").nth(0)).toHaveValue("example.com");
     await expect(page.locator(".rule .pattern-input").nth(1)).toHaveValue("192.168.1.1");
-    await expect(page.locator(".rule .pattern-input").nth(2)).toHaveValue("/regex/");
+    await expect(page.locator(".rule .pattern-input").nth(2)).toHaveValue("*.example.net");
   });
 
   test("should handle invalid lines", async ({ page }) => {
@@ -123,6 +123,7 @@ valid.com`);
 
     const selectTrigger = dialog.locator("[data-select-trigger]");
     await selectTrigger.click();
+    await expect(page.getByRole("option", { name: "Regex", exact: true })).toHaveCount(0);
 
     const option = page.getByRole("option", { name: "Wildcard" });
 
@@ -135,5 +136,16 @@ valid.com`);
 
     await expect(page.locator(".rule")).toHaveCount(1);
     await expect(page.locator(".rule")).toContainText("Wildcard");
+  });
+
+  test("auto import skips unsupported syntax", async ({ page }) => {
+    const dialog = await openImportDialog(page);
+    await dialog.locator("textarea").fill("example.com\n^(.+)+\\.example\\.com$");
+    await dialog.locator("textarea").blur();
+    await expect(dialog.locator(".line-row.invalid")).toHaveCount(1);
+    await dialog.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator(".rule")).toHaveCount(1);
+    await expect(page.locator(".rule .pattern-input")).toHaveValue("example.com");
   });
 });

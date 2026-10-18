@@ -55,6 +55,16 @@ func TestRoutingInterfaceInputsCannotInjectIPTablesArguments(t *testing.T) {
 	}
 }
 
+func TestEnabledUnsupportedRuleTypesAreRejected(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		_, groupErr := RuleFromReq(types.RuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)
+		_, subErr := SubscriptionRuleFromReq(types.SubscriptionRuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)
+		if (groupErr != nil) != enabled || (subErr != nil) != enabled {
+			t.Fatalf("unsupported enabled=%t: group=%v subscription=%v", enabled, groupErr, subErr)
+		}
+	}
+}
+
 func bulkRuleFixture(count int) (*models.Group, types.GroupReq, *models.Subscription, types.SubscriptionReq) {
 	group := &models.Group{ID: intID.ID{1}, Rules: make([]*models.Rule, count)}
 	subscription := &models.Subscription{ID: intID.ID{2}, Rules: make([]*models.SubscriptionRule, count), LastCheck: 123, LastUpdate: 100}

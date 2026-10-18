@@ -3,8 +3,6 @@
 package magitrickle
 
 import (
-	"net"
-	"strings"
 	"testing"
 
 	"magitrickle/constant"
@@ -76,14 +74,6 @@ func TestRealRuleSetSyncDNSBindings(t *testing.T) {
 	check(err)
 	assertSets()
 	check(g.Sync())
-	assertSets()
-	// A timeout while preparing new rules must retain the live kernel sets.
-	a.recordsCache.AddAddress(strings.Repeat("a.", 50)+"example", net.IPv4(192, 0, 2, 40).To4(), 120)
-	updated := *g.Model()
-	updated.Rules = []*models.Rule{{ID: intID.ID{33}, Type: models.RuleTypeRegEx, Rule: `^([a.]+)+$`, Enable: true}}
-	if err := a.UpdateGroup(&updated); err == nil {
-		t.Fatal("an inconclusive regex was allowed to replace the live set")
-	}
 	assertSets()
 	// Simulate a kernel/ipset failure, then ensure the client never receives
 	// a successful DNS answer containing an address we failed to route.

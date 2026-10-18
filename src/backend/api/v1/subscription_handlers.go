@@ -284,6 +284,10 @@ func (h *Handler) GetSubscriptionRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rules := subscriptions.ParseRules(list)
+	if err := subscriptions.ValidateRules(rules); err != nil {
+		utils.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
 	utils.WriteJson(w, http.StatusOK, RespFromSubscriptionRules(rules))
 }
 

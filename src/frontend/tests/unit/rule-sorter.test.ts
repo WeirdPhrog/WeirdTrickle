@@ -30,15 +30,14 @@ describe("Rule Sorter", () => {
     assert.strictEqual(sorted[1].name, "A");
   });
 
-  it("should prioritize patterns correctly (Subnet > Wildcard > Domain > Regex)", () => {
+  it("should prioritize patterns correctly (Subnet > Domain > Wildcard)", () => {
     const rules = [
       createRule({ rule: "example.com", type: "domain" }),
       createRule({ rule: "192.168.1.0/24", type: "subnet" }),
-      createRule({ rule: ".*", type: "regex" }),
       createRule({ rule: "*.example.com", type: "wildcard" }),
     ];
 
-    // Expected: Subnet (10) -> Domain (exact match) -> Wildcard (child of domain) -> Regex (40)
+    // Expected: Subnet (10) -> Domain (exact match) -> Wildcard (child of domain)
     // Note: Domain and Wildcard are "domain-like" and sorted by content.
     // "example.com" comes before "*.example.com" in domain sort logic.
     const sorted = sortRules(rules, "pattern", "asc");
@@ -46,7 +45,6 @@ describe("Rule Sorter", () => {
     assert.strictEqual(sorted[0].type, "subnet");
     assert.strictEqual(sorted[1].type, "domain");
     assert.strictEqual(sorted[2].type, "wildcard");
-    assert.strictEqual(sorted[3].type, "regex");
   });
 
   it("should sort subnets by IP and mask", () => {

@@ -13,7 +13,6 @@
   import {
     isValidDomain,
     isValidNamespace,
-    isValidRegex,
     isValidSubnet,
     isValidSubnet6,
     isValidWildcard,
@@ -118,7 +117,6 @@
   const TYPE_COLORS: Record<string, string> = {
     namespace: "#3182ce",
     wildcard: "#d69e2e",
-    regex: "#d53f8c",
     domain: "#805ad5",
     subnet: "#38a169",
     subnet6: "#088484",
@@ -128,7 +126,6 @@
   const TYPE_LABELS: Record<string, string> = {
     namespace: "namespace",
     wildcard: "wildcard",
-    regex: "regex",
     domain: "domain",
     subnet: "IPv4",
     subnet6: "IPv6",
@@ -148,7 +145,6 @@
     if (isValidSubnet(p)) return "subnet";
     if (isValidNamespace(p)) return "namespace";
     if (isValidDomain(p)) return "domain";
-    if (isValidRegex(p)) return "regex";
     if (isValidWildcard(p)) return "wildcard";
     return null;
   }

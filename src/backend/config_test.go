@@ -70,7 +70,13 @@ func TestInvalidConfigLeavesExistingGroupsIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 	filename := filepath.Join(t.TempDir(), "config.yaml")
-	for _, data := range []string{"configVersion: 1.0.0\ngroups: []\n", "configVersion: 0.7.0\ngroups: [null]\n", "configVersion: 0.7.0\nsubscriptions: [null]\n"} {
+	for _, data := range []string{
+		"configVersion: 1.0.0\ngroups: []\n",
+		"configVersion: 0.7.0\ngroups: [null]\n",
+		"configVersion: 0.7.0\nsubscriptions: [null]\n",
+		"configVersion: 0.7.0\ngroups:\n  - rules:\n      - {type: unsupported, rule: example.com, enable: true}\n",
+		"configVersion: 0.7.0\nsubscriptions:\n  - rules:\n      - {type: unsupported, rule: example.com, enable: true}\n",
+	} {
 		if err := os.WriteFile(filename, []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}

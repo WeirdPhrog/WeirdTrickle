@@ -7,7 +7,6 @@ func TestDNSMatchingIgnoresCase(t *testing.T) {
 		{RuleTypeDomain, "EXAMPLE.com", "example.COM"},
 		{RuleTypeNamespace, "EXAMPLE.com", "SUB.example.COM"},
 		{RuleTypeWildcard, "*.EXAMPLE.com", "sub.example.COM"},
-		{RuleTypeRegEx, `^EXAMPLE\.com$`, "example.COM"},
 	} {
 		rule := &Rule{Type: test.kind, Rule: test.pattern}
 		if !rule.IsMatch(test.name) {

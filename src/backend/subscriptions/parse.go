@@ -166,9 +166,6 @@ func detectSubscriptionRuleType(pattern string) string {
 	if isValidDomain(p) {
 		return "domain"
 	}
-	if isValidRegex(p) {
-		return "regex"
-	}
 	if isValidWildcard(p) {
 		return "wildcard"
 	}

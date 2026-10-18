@@ -22,9 +22,9 @@ type subscriptionRetry struct {
 	next  time.Time
 }
 
-// Caller holds subscriptionSyncMu. Retry failures without changing LastUpdate
+// Caller holds subscriptionSyncMu. Retry fetch/apply failures without changing LastUpdate
 // or the user's normal refresh interval; manual sync bypasses this backoff.
-func (a *App) subscriptionFetchFailed(id intID.ID, url string, now time.Time) {
+func (a *App) subscriptionFailed(id intID.ID, url string, now time.Time) {
 	previous := a.subscriptionRetries[id]
 	delay := time.Minute
 	if previous.url == url {
@@ -73,6 +73,14 @@ func (a *App) SyncSubscriptionRuleSets() error {
 }
 
 func (a *App) syncSubscriptionRuleSetsLocked() error {
+	for _, sub := range a.subscriptions {
+		if sub == nil {
+			return fmt.Errorf("null subscription")
+		}
+		if err := subscriptions.ValidateRules(sub.Rules); err != nil {
+			return err
+		}
+	}
 	specs := subscriptions.BuildRuntimeRuleSets(a.subscriptions)
 	a.publishDNSRulesLocked(specs)
 	defer a.publishDNSRulesLocked(nil)
@@ -146,13 +154,15 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 	list, err := a.FetchSubscriptionList(ctx, fetchURL)
 	if err != nil {
 		if ctx.Err() == nil {
-			a.subscriptionFetchFailed(id, fetchURL, now.Add(time.Since(started)))
+			a.subscriptionFailed(id, fetchURL, now.Add(time.Since(started)))
 		}
 		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
 	}
-	delete(a.subscriptionRetries, id)
-
 	refreshed, rulesChanged := subscriptions.PlanRefresh(existingRules, list)
+	if err := subscriptions.ValidateRules(refreshed); err != nil {
+		a.subscriptionFailed(id, fetchURL, now.Add(time.Since(started)))
+		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
+	}
 	nowSeconds := uint32(now.Unix())
 
 	a.stateMu.Lock()
@@ -176,6 +186,7 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 		current.Rules = refreshed
 		current.LastUpdate = nowSeconds
 		if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
+			a.subscriptionFailed(id, fetchURL, now.Add(time.Since(started)))
 			current.URL = prevURL
 			current.LastCheck = prevLastCheck
 			current.LastUpdate = prevLastUpdate
@@ -186,6 +197,7 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 			return app.SubscriptionSyncResult{}, true, err
 		}
 	}
+	delete(a.subscriptionRetries, id)
 
 	return app.SubscriptionSyncResult{
 		URL:        current.URL,
@@ -232,6 +244,7 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 
 	type planResult struct {
 		id        intID.ID
+		url       string
 		refreshed []*models.SubscriptionRule
 		changed   bool
 	}
@@ -243,15 +256,20 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 		list, err := a.FetchSubscriptionList(ctx, item.url)
 		if err != nil {
 			if ctx.Err() == nil {
-				a.subscriptionFetchFailed(item.id, item.url, now.Add(time.Since(started)))
+				a.subscriptionFailed(item.id, item.url, now.Add(time.Since(started)))
 			}
 			log.Error().Err(err).Str("subscription", item.id.String()).Msg("failed to fetch subscription")
 			continue
 		}
-		delete(a.subscriptionRetries, item.id)
 		refreshed, changed := subscriptions.PlanRefresh(item.existingRules, list)
+		if err := subscriptions.ValidateRules(refreshed); err != nil {
+			a.subscriptionFailed(item.id, item.url, now.Add(time.Since(started)))
+			log.Error().Err(err).Str("subscription", item.id.String()).Msg("invalid subscription rules; retaining the previous list")
+			continue
+		}
 		plans = append(plans, planResult{
 			id:        item.id,
+			url:       item.url,
 			refreshed: refreshed,
 			changed:   changed,
 		})
@@ -295,11 +313,17 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 	}
 
 	if !anyChanged {
+		for _, p := range plans {
+			delete(a.subscriptionRetries, p.id)
+		}
 		a.stateMu.Unlock()
 		return false, nil
 	}
 
 	if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
+		for _, p := range plans {
+			a.subscriptionFailed(p.id, p.url, now.Add(time.Since(started)))
+		}
 		for _, r := range rollback {
 			r.sub.Rules = r.rules
 			r.sub.LastCheck = r.lastCheck
@@ -311,6 +335,9 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 			return true, errors.Join(err, fmt.Errorf("failed to rollback subscription sync: %w", rollbackErr))
 		}
 		return true, err
+	}
+	for _, p := range plans {
+		delete(a.subscriptionRetries, p.id)
 	}
 	a.stateMu.Unlock()
 
