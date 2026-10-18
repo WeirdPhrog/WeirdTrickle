@@ -179,7 +179,7 @@ func (a *App) Start(ctx context.Context) (err error) {
 		case err := <-errChan:
 			return err
 		case <-restoreTicker.C:
-			if err := a.retryRoutingRestores(); err != nil {
+			if err := a.retryRoutingRestores(time.Now()); err != nil {
 				log.Error().Err(err).Msg("failed to restore suspended routing; will retry")
 			}
 		case <-ctx.Done():

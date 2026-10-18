@@ -29,6 +29,7 @@ type SubscriptionSyncResult struct {
 
 type Main interface {
 	Config() models.AppConfig
+	RoutingStatus() []models.RoutingRestoreStatus
 	UserGroups() []RuleSet
 	ClearGroups()
 	AddGroup(groupModel *models.Group) error

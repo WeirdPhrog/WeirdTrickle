@@ -107,6 +107,28 @@ definitions:
         example: iptables
         type: string
     type: object
+  types.RoutingRestoreStatus:
+    properties:
+      error:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      nextRetryAt:
+        type: integer
+      retryDelaySeconds:
+        type: integer
+      subscription:
+        type: boolean
+    type: object
+  types.RoutingStatusRes:
+    properties:
+      suspended:
+        items:
+          $ref: '#/definitions/types.RoutingRestoreStatus'
+        type: array
+    type: object
   types.RuleReq:
     properties:
       enable:
@@ -1078,4 +1100,18 @@ paths:
       summary: Получить список интерфейсов
       tags:
       - config
+  /api/v1/system/routing:
+    get:
+      description: Runtime rollback failures only; does not report general VPN health.
+        nextRetryAt is the earliest automatic retry time (Unix seconds).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.RoutingStatusRes'
+      summary: Get suspended routing sets and recovery status
+      tags:
+      - system
 swagger: "2.0"

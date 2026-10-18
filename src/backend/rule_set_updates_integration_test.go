@@ -246,8 +246,18 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 		t.Fatal("a blocked replacement unexpectedly succeeded")
 	}
 	assertBlocked()
-	if err := a.retryRoutingRestores(); err == nil {
+	status := a.RoutingStatus()
+	if len(status) != 1 || status[0].ID != group.ID || status[0].Subscription || status[0].Error == "" || status[0].RetryDelaySeconds != 60 {
+		t.Fatalf("failed rollback is not visible: %+v", status)
+	}
+	if err := a.retryRoutingRestores(time.Now()); err != nil {
+		t.Fatalf("retry ignored the recovery backoff: %v", err)
+	}
+	if err := a.retryRoutingRestores(time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("restoration unexpectedly succeeded while the fault persisted")
+	}
+	if status = a.RoutingStatus(); len(status) != 1 || status[0].RetryDelaySeconds != 120 {
+		t.Fatalf("recovery failure did not increase the delay: %+v", status)
 	}
 	assertBlocked()
 	// Saving unchanged rules must not release the blackhole without restoring
@@ -259,7 +269,10 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	}
 	assertBlocked()
 	run("iptables", "-t", "mangle", "-F", "BUSY_SET")
-	check(a.retryRoutingRestores())
+	check(a.retryRoutingRestores(time.Now().Add(time.Hour)))
+	if len(a.RoutingStatus()) != 0 || a.routingRestoresPending.Load() {
+		t.Fatal("recovery left a stale suspended status")
+	}
 	assertEgress("mtother")
 	for _, iface := range []string{"missing-vpn", "blackhole", "mtother"} {
 		changed.Interface = iface

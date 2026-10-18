@@ -97,6 +97,7 @@ app.post(`${API_BASE}/auth`, async (c) => {
 });
 
 app.get(`${API_BASE}/groups`, (c) => c.json(DATA));
+app.get(`${API_BASE}/system/routing`, (c) => c.json({ suspended: [] }));
 app.put(`${API_BASE}/groups`, async (c) => {
   console.debug("recieved", (await c.req.json())?.groups?.length, "groups");
   await new Promise((resolve) => setTimeout(resolve, 2000));

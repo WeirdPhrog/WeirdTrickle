@@ -59,6 +59,7 @@ The root package (`src/backend/*.go`) contains the `App` struct — the central 
 - **`start.go`** — `App.Start()`: wires up DNS MITM proxy, iptables helper, HTTP/Unix API servers, and the netlink watcher
 - **`dns.go`**, **`dns_snapshot.go`** — DNS hooks and a conservative prefilter; matching addresses must be routed before returning a usable answer, including pending subscription rules without `Spec.Model`
 - **`rule_set.go`** — `RuleSet` wraps a group spec with ipset + iptables lifecycle (Enable/Disable/Sync)
+- **`routing_restore.go`** — immutable rollback-error snapshots, recovery backoff (1–15 minutes) and runtime status; healthy maintenance checks an atomic flag before locking. `/api/v1/system/routing` and WebUI expose pending rollback recovery, not general VPN health.
 - **`subscriptions.go`** — subscription-level rule set management and auto-update scheduling
 
 Key sub-packages:

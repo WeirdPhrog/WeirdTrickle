@@ -94,6 +94,7 @@ func NewRouter(a app.Main) chi.Router {
 		})
 	})
 	r.Route("/system", func(r chi.Router) {
+		r.Get("/routing", h.GetRoutingStatus)
 		r.Get("/interfaces", h.ListInterfaces)
 		r.Route("/config", func(r chi.Router) {
 			r.Post("/save", h.SaveConfig)

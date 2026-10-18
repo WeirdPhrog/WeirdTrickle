@@ -94,7 +94,8 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) ([]*models.S
 		if old := existingByRule[key]; old != nil {
 			// Canonical aliases may carry different user overrides. Choosing
 			// one silently could disable previously effective routing.
-			if old.Rule != rule.Rule && (old.Type != rule.Type || old.Enable != rule.Enable) {
+			fallback := detectSubscriptionRuleType(key)
+			if old.Rule != rule.Rule && (savedRuleType(old, fallback) != savedRuleType(rule, fallback) || old.Enable != rule.Enable) {
 				return nil, fmt.Errorf("conflicting overrides for normalized subscription rule %q; retaining the previous rules", key)
 			}
 			continue
@@ -107,9 +108,7 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) ([]*models.S
 		if current := existingByRule[rule.Rule]; current != nil {
 			rule.ID = current.ID
 			rule.Enable = current.Enable
-			if current.Type != "" {
-				rule.Type = current.Type
-			}
+			rule.Type = savedRuleType(current, rule.Type)
 		}
 		if rule.ID.IsZero() {
 			rule.ID = nextUniqueRuleID(usedRuleIDs)
@@ -123,6 +122,13 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) ([]*models.S
 	}
 
 	return parsed, nil
+}
+
+func savedRuleType(rule *models.SubscriptionRule, fallback string) string {
+	if models.ValidateRuleType(rule.Type) == nil {
+		return rule.Type
+	}
+	return fallback
 }
 
 type subscriptionRuleState struct {
