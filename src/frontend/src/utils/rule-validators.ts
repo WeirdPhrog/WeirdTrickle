@@ -49,20 +49,7 @@ export function isValidSubnet6(pattern: string): boolean {
   return pattern === pattern.trim() && validPrefix(parts, 128) && isValidIPv6(parts[0]);
 }
 
-export function isValidRegex(pattern: string): boolean {
-  try {
-    new RegExp(pattern);
-    return true;
-  } catch (e) {
-    if (e instanceof SyntaxError) {
-      return false;
-    }
-    return false;
-  }
-}
-
 export const VALIDATOP_MAP: Record<string, (pattern: string) => boolean> = {
-  regex: isValidRegex,
   wildcard: isValidWildcard,
   domain: isValidDomain,
   namespace: isValidNamespace,

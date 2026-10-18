@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 import {
   isValidDomain,
   isValidNamespace,
-  isValidRegex,
   isValidRule,
   isValidSubnet,
   isValidSubnet6,
@@ -17,9 +16,9 @@ describe("Rule validator", () => {
     strictEqual(isValidRule(rule), true);
     rule.rule = "[";
     strictEqual(isValidRule(rule), false);
-    rule.type = "regex";
+    rule.type = "wildcard";
     strictEqual(isValidRule(rule), false);
-    rule.rule = "^example\\.com$";
+    rule.rule = "*.example.com";
     strictEqual(isValidRule(rule), true);
     rule.type = "domain";
     strictEqual(isValidRule(rule), false);
@@ -74,18 +73,10 @@ describe("Rule validator", () => {
     for (const type of ["unknown", "toString", "__proto__"]) {
       strictEqual(isValidRule({ type, rule: "example.com" }), false);
     }
-    strictEqual(isValidRule({ type: "regex", rule: "" }), false);
+    strictEqual(isValidRule({ type: "domain", rule: "" }), false);
     strictEqual(isValidRule({ type: "subnet6", rule: "1::2::3" }), false);
     strictEqual(isValidRule({ type: "domain", rule: "example.com" }), true);
   });
-  it("should be valid regexp", () => {
-    strictEqual(isValidRegex("^[a-zA-Z0-9]+$"), true);
-    strictEqual(isValidRegex("^[a-zA-Z0-9+$"), false);
-    strictEqual(isValidRegex(".*"), true);
-    strictEqual(isValidRegex("a(b|c)d"), true);
-    strictEqual(isValidRegex("\\d+"), true);
-  });
-
   it("should be valid domain", () => {
     strictEqual(isValidDomain("domain.com"), true);
     strictEqual(isValidDomain("domain.com.cn"), true);

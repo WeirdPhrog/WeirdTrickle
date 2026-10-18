@@ -333,15 +333,9 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return false, nil
 	}
-	var matchErr error
 	for _, rule := range g.domainRules() {
 		for _, name := range names {
-			matched, err := rule.Match(name)
-			if err != nil {
-				matchErr = err
-				continue
-			}
-			if matched {
+			if rule.IsMatch(name) {
 				if g.ipset == nil || g.ipsetToLink == nil {
 					return true, fmt.Errorf("routing is not ready")
 				}
@@ -352,5 +346,5 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 			}
 		}
 	}
-	return false, matchErr
+	return false, nil
 }

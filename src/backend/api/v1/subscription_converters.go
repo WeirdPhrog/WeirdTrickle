@@ -87,6 +87,11 @@ func subscriptionRuleFromReq(ruleReq types.SubscriptionRuleReq, existingIDs map[
 	rule.Rule = ruleReq.Rule
 	rule.Type = ruleReq.Type
 	rule.Enable = ruleReq.Enable
+	if rule.Enable {
+		if err := models.ValidateRuleType(rule.Type); err != nil {
+			return nil, err
+		}
+	}
 	return rule, nil
 }
 

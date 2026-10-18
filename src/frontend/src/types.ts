@@ -80,7 +80,6 @@ export type Config = InferOutput<typeof ConfigSchema>;
 export const RULE_TYPES = [
   { value: "namespace", label: "Namespace" },
   { value: "wildcard", label: "Wildcard" },
-  { value: "regex", label: "Regex" },
   { value: "domain", label: "Domain" },
   { value: "subnet", label: "IPv4 subnet" },
   { value: "subnet6", label: "IPv6 subnet" },

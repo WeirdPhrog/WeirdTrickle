@@ -93,7 +93,7 @@ Subscription fetching has a separate shared interface setting, `app.subscription
 
 ### Rule types
 
-Defined in `models/rule.go`: `domain` (exact), `namespace` (domain + subdomains), `wildcard` (`*`/`?`), `regex` (dlclark/regexp2), `subnet` (IPv4 CIDR), `subnet6` (IPv6 CIDR).
+Defined in `models/rule.go`: `domain` (exact), `namespace` (domain + subdomains), `wildcard` (`*`/`?`), `subnet` (IPv4 CIDR), `subnet6` (IPv6 CIDR). Regex rules and their engine were removed in 2.0.0. Enabled unsupported types are rejected before routing/config changes; invalid downloaded lists retain the last working rules.
 
 ## Frontend
 

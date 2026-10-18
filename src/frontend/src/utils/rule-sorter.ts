@@ -9,7 +9,6 @@ const TYPE_PRIORITY: Record<string, number> = {
   wildcard: 20,
   domain: 30,
   namespace: 31,
-  regex: 40, // Regex usually at the end
 };
 
 function ipToNum(ip: string): number {

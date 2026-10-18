@@ -26,7 +26,7 @@ func (a *App) dnsRuleSetSnapshot(names []string) []*RuleSet {
 func (s *dnsRuleSnapshot) matches(names []string) bool {
 	for _, rule := range s.rules {
 		for _, name := range names {
-			if rule.MayMatch(name) {
+			if rule.IsMatch(name) {
 				return true
 			}
 		}
@@ -47,7 +47,7 @@ func (a *App) publishDNSRulesLocked(pending []rulesets.Spec) {
 				continue
 			}
 			switch rule.Type {
-			case models.RuleTypeDomain, models.RuleTypeNamespace, models.RuleTypeWildcard, models.RuleTypeRegEx:
+			case models.RuleTypeDomain, models.RuleTypeNamespace, models.RuleTypeWildcard:
 				snapshot.rules = append(snapshot.rules, rule)
 			}
 		}

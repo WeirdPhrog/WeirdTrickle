@@ -14,11 +14,10 @@ import (
 	"magitrickle/models"
 	"magitrickle/subscriptions"
 
-	"github.com/dlclark/regexp2"
 	"go.yaml.in/yaml/v2"
 )
 
-var colorRegExp = regexp2.MustCompile(`^#[0-9a-f]{6}$`, regexp2.IgnoreCase)
+var colorRegExp = regexp.MustCompile(`(?i)^#[0-9a-f]{6}$`)
 
 const cfgFolderLocation = constant.AppStateDir
 const cfgFileLocation = cfgFolderLocation + "/config.yaml"
@@ -75,10 +74,8 @@ func (a *App) loadConfig(filename string) error {
 			if sub == nil {
 				return fmt.Errorf("null subscription in config")
 			}
-			for _, rule := range sub.Rules {
-				if rule == nil {
-					return fmt.Errorf("null subscription rule in config")
-				}
+			if err := subscriptions.ValidateRules(sub.Rules); err != nil {
+				return err
 			}
 		}
 	}
@@ -154,7 +151,7 @@ func (a *App) loadConfig(filename string) error {
 
 	if cfg.Groups != nil {
 		for _, group := range *cfg.Groups {
-			if match, _ := colorRegExp.MatchString(group.Color); !match {
+			if !colorRegExp.MatchString(group.Color) {
 				group.Color = "#ffffff"
 			} else {
 				group.Color = strings.ToLower(group.Color)

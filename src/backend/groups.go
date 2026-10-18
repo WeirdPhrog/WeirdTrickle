@@ -24,6 +24,11 @@ func validateGroups(groups []*models.Group) error {
 			if rule == nil {
 				return fmt.Errorf("null rule in group %s", group.ID)
 			}
+			if rule.Enable {
+				if err := models.ValidateRuleType(rule.Type); err != nil {
+					return fmt.Errorf("group %s: %w", group.ID, err)
+				}
+			}
 			if ruleIDs[rule.ID] {
 				return ErrRuleIDConflict
 			}

@@ -17,16 +17,16 @@ import (
 	"magitrickle/utils/intID"
 )
 
-func TestGroupEditsReplaceCompiledRulesAndKeepSnapshots(t *testing.T) {
+func TestGroupEditsKeepSnapshots(t *testing.T) {
 	a := &magitrickle.App{}
 	id, ruleID := intID.ID{1}, intID.ID{2}
-	old := &models.Rule{ID: ruleID, Type: models.RuleTypeRegEx, Rule: "^old\\.example$", Enable: true}
+	old := &models.Rule{ID: ruleID, Type: models.RuleTypeDomain, Rule: "old.example", Enable: true}
 	group := &models.Group{ID: id, Name: "old", Enable: true, Rules: []*models.Rule{old}}
 	if err := a.AddGroup(group); err != nil {
 		t.Fatal(err)
 	}
 	if !old.IsMatch("old.example") {
-		t.Fatal("initial regex does not match")
+		t.Fatal("initial domain does not match")
 	}
 	router := v1.NewRouter(a)
 	request := func(path string, payload any) *httptest.ResponseRecorder {
@@ -38,13 +38,13 @@ func TestGroupEditsReplaceCompiledRulesAndKeepSnapshots(t *testing.T) {
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodPut, path, bytes.NewReader(data)))
 		return w
 	}
-	w := request("/groups/"+id.String()+"/rules/"+ruleID.String(), types.RuleReq{Type: models.RuleTypeRegEx, Rule: "^new\\.example$", Enable: true})
+	w := request("/groups/"+id.String()+"/rules/"+ruleID.String(), types.RuleReq{Type: models.RuleTypeDomain, Rule: "new.example", Enable: true})
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	updated := a.UserGroups()[0].Model().Rules[0]
 	if !updated.IsMatch("new.example") || updated.IsMatch("old.example") {
-		t.Fatal("edited regex still uses old compiled matcher")
+		t.Fatal("edited domain did not replace the old rule")
 	}
 	if group.Rules[0] != old || !old.IsMatch("old.example") {
 		t.Fatal("published model mutated")
@@ -73,7 +73,7 @@ func TestConcurrentGroupAPIAndDNSMatching(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for n := 0; n < 50; n++ {
-				data := []byte(`{"type":"regex","rule":"^example\\.com$","enable":true}`)
+				data := []byte(`{"type":"domain","rule":"example.com","enable":true}`)
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/groups/"+id.String()+"/rules/"+ruleID.String(), bytes.NewReader(data)))
 				if w.Code != http.StatusOK && w.Code != http.StatusConflict {

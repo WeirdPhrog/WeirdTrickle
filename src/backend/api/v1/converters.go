@@ -2,17 +2,16 @@ package v1
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"magitrickle/api/v1/types"
 	"magitrickle/models"
 	"magitrickle/subscriptions"
 	"magitrickle/utils/intID"
-
-	"github.com/dlclark/regexp2"
 )
 
-var colorRegExp = regexp2.MustCompile(`^#[0-9a-f]{6}$`, regexp2.IgnoreCase)
+var colorRegExp = regexp.MustCompile(`(?i)^#[0-9a-f]{6}$`)
 
 func GroupFromReq(req types.GroupReq, existing *models.Group) (*models.Group, error) {
 	if err := subscriptions.ValidateFetchInterface(req.Interface); err != nil {
@@ -35,7 +34,7 @@ func GroupFromReq(req types.GroupReq, existing *models.Group) (*models.Group, er
 	}
 	group.Name = req.Name
 	group.Color = "#ffffff"
-	if match, _ := colorRegExp.MatchString(req.Color); match {
+	if colorRegExp.MatchString(req.Color) {
 		group.Color = strings.ToLower(req.Color)
 	}
 	group.Interface = req.Interface
@@ -86,6 +85,11 @@ func ruleFromReq(ruleReq types.RuleReq, existingIDs map[intID.ID]struct{}) (*mod
 	rule.Type = ruleReq.Type
 	rule.Rule = ruleReq.Rule
 	rule.Enable = ruleReq.Enable
+	if rule.Enable {
+		if err := models.ValidateRuleType(rule.Type); err != nil {
+			return nil, err
+		}
+	}
 	return rule, nil
 }
 

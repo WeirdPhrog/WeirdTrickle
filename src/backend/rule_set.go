@@ -67,7 +67,7 @@ func (g *RuleSet) storeModel(group *models.Group) {
 			continue
 		}
 		switch rule.Type {
-		case models.RuleTypeDomain, models.RuleTypeNamespace, models.RuleTypeWildcard, models.RuleTypeRegEx:
+		case models.RuleTypeDomain, models.RuleTypeNamespace, models.RuleTypeWildcard:
 			model.domainRules = append(model.domainRules, rule)
 		}
 	}
@@ -182,7 +182,7 @@ func modelFromSpec(spec rulesets.Spec) *models.Group {
 	return &models.Group{ID: spec.ID, Name: spec.Name, Interface: spec.Interface, Enable: spec.Enable, Rules: spec.Rules}
 }
 
-// Compare configuration fields only; compiled regexes contain mutable locks.
+// Compare rule values; equivalent request snapshots may have different pointers.
 func sameRules(a, b []*models.Rule) bool {
 	if len(a) != len(b) {
 		return false
@@ -489,11 +489,7 @@ func (g *RuleSet) syncRules(rules []*models.Rule, retainOld bool) error {
 
 		default:
 			for _, domainName := range knownDomains {
-				matched, err := domain.Match(domainName)
-				if err != nil {
-					return fmt.Errorf("DNS rule matching failed: %w", err)
-				}
-				if !matched {
+				if !domain.IsMatch(domainName) {
 					continue
 				}
 				domainAddresses := g.app.recordsCache.GetAddresses(domainName)

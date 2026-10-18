@@ -54,14 +54,80 @@ func TestSubscriptionBackoffIsBoundedAndDoesNotDelayChangedURL(t *testing.T) {
 	id := intID.ID{1}
 	now := time.Unix(1800000000, 0)
 	for i := 0; i < 20; i++ {
-		a.subscriptionFetchFailed(id, "http://old.example", now)
+		a.subscriptionFailed(id, "http://old.example", now)
 	}
 	if retry := a.subscriptionRetries[id]; retry.delay != 15*time.Minute || !retry.next.Equal(now.Add(15*time.Minute)) {
 		t.Fatalf("unbounded backoff: %+v", retry)
 	}
-	a.subscriptionFetchFailed(id, "http://new.example", now)
+	a.subscriptionFailed(id, "http://new.example", now)
 	if a.subscriptionRetries[id].delay != time.Minute {
 		t.Fatal("a different URL inherited the old failure delay")
+	}
+}
+
+func TestSubscriptionApplyFailureBackoffAndManualRecovery(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte("new.example\n"))
+	}))
+	defer server.Close()
+	id := intID.ID{1}
+	oldRules := []*models.SubscriptionRule{{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: true}}
+	// Duplicate runtime IDs cause a deterministic apply failure without kernel
+	// privileges. Successful HTTP downloads must not reset the apply backoff.
+	a := &App{subscriptions: []*models.Subscription{
+		{ID: id, URL: server.URL, Enable: true, Interval: 60, Rules: oldRules},
+		{ID: id, URL: server.URL, Enable: true, Interval: 0, Rules: oldRules},
+	}}
+	now := time.Unix(1800000000, 0)
+	for _, offset := range []time.Duration{0, 75 * time.Second} {
+		if _, err := a.SyncDueSubscriptions(now.Add(offset)); err == nil {
+			t.Fatal("expected subscription apply failure")
+		}
+	}
+	if _, err := a.SyncDueSubscriptions(now.Add(2 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 2 || a.subscriptionRetries[id].delay != 2*time.Minute {
+		t.Fatalf("apply failures kept fetching every minute: %d requests, retry=%+v", requests.Load(), a.subscriptionRetries[id])
+	}
+	if a.subscriptions[0].Rules[0] != oldRules[0] || a.subscriptions[0].LastCheck != 0 {
+		t.Fatal("failed apply changed the last good subscription")
+	}
+	if _, _, err := a.SyncSubscriptionByID(id, now.Add(2*time.Minute), ""); err == nil {
+		t.Fatal("manual apply unexpectedly succeeded")
+	}
+	if requests.Load() != 3 || a.subscriptionRetries[id].delay != 4*time.Minute {
+		t.Fatal("a failed manual apply reset the retry delay")
+	}
+	a.subscriptions = a.subscriptions[:1]
+	if _, _, err := a.SyncSubscriptionByID(id, now.Add(2*time.Minute), ""); err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 4 || len(a.subscriptionRetries) != 0 || a.subscriptions[0].Rules[0].Rule != "new.example" {
+		t.Fatal("manual recovery did not bypass and reset the apply backoff")
+	}
+}
+
+func TestUnsupportedDownloadedRuleRetainsRulesAndBacksOff(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte("not a supported rule"))
+	}))
+	defer server.Close()
+	id := intID.ID{1}
+	rules := []*models.SubscriptionRule{{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: true}}
+	a := &App{subscriptions: []*models.Subscription{{ID: id, URL: server.URL, Enable: true, Interval: 60, Rules: rules}}}
+	now := time.Unix(1800000000, 0)
+	for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
+		if _, err := a.SyncDueSubscriptions(now.Add(offset)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if requests.Load() != 2 || a.subscriptions[0].Rules[0] != rules[0] || a.subscriptions[0].LastUpdate != 0 {
+		t.Fatal("an unsupported downloaded rule was published or retried without backoff")
 	}
 }
 
