@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-10-18
+
+### Изменено
+
+- Уточнена тёмная палитра WebUI: фон, панели и мятные акценты стали немного холоднее, с меньшей желтизной. Сохранены приглушённость, привычная яркость и читаемость.
+
 ## [1.0.4] — 2026-10-18
 
 ### Изменено
@@ -62,7 +68,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.4...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.5...develop
+[1.0.5]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.1...v1.0.2
