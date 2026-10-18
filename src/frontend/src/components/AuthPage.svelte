@@ -7,7 +7,7 @@
   import { toast } from "../utils/events";
   import { fetcher } from "../utils/fetcher";
   import { Info, Password, User } from "./ui/icons";
-  import logoUrl from "../assets/logo.svg";
+  import logoUrl from "../assets/logo.png";
 
   let login = $state("");
   let password = $state("");
@@ -47,7 +47,7 @@
   <div class="left-panel">
     <div class="logo-wrapper">
       <div class="logo-sticker">
-        <img src={logoUrl} alt="" class="logo-background" draggable="false" />
+        <img src={logoUrl} alt="WeirdTrickle" class="logo-background" draggable="false" />
       </div>
     </div>
     <div class="card">

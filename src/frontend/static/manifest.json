@@ -1,6 +1,6 @@
 {
-    "name": "MagiTrickle WebUI",
-    "short_name": "MagiTrickle",
+    "name": "WeirdTrickle WebUI",
+    "short_name": "WeirdTrickle",
     "start_url": "/",
     "display": "standalone",
     "icons": [

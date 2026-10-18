@@ -4,7 +4,7 @@ ENABLED=yes
 PROCS=magitrickled
 ARGS=""
 PREARGS=""
-DESC="MagiTrickle Daemon"
+DESC="WeirdTrickle Daemon"
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/sbin:/opt/bin
 
 . /opt/etc/init.d/rc.func

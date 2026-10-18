@@ -1,8 +1,9 @@
-name: Build, test and release fork
+name: Build, test and release WeirdTrickle
 
 on:
   push:
     branches: [develop, 'codex/**']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -31,7 +32,8 @@ jobs:
         env:
           PLATFORMS: ${{ inputs.platforms || 'entware' }}
         run: |
-          echo "version=$(date -u +%Y.%-m.%-d).${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          version=$(python3 scripts/release_version.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           from pathlib import Path
@@ -152,7 +154,7 @@ jobs:
       - name: Build packages
         env:
           PKG_VERSION: ${{ needs.prepare.outputs.version }}
-          PKG_VERSION_DISPLAY: ${{ needs.prepare.outputs.version }} (WeirdPhrog)
+          PKG_VERSION_DISPLAY: ${{ needs.prepare.outputs.version }}
           PKG_REVISION: '1'
         run: |
           cp '${{ matrix.config }}' .config
@@ -168,7 +170,7 @@ jobs:
           compression-level: 0
 
   release:
-    if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
     needs: [prepare, test, build]
     runs-on: ubuntu-latest
     permissions:
@@ -195,11 +197,13 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           cat > /tmp/release-notes <<'EOF'
-          Routing updates preserve live rule sets and policy tables. Replacement ipsets are populated before swapping, large subscriptions can exceed 65536 entries, and interface changes retain a blackhole fallback instead of exposing the system WAN route. Bulk group edits prepare new memberships before removing old ones; default gateway selection respects route metrics.
+          WeirdTrickle uses MAJOR.MINOR.PATCH versions. Existing MagiTrickle configuration, package identity and service paths are preserved for upgrades.
 
-          DNS routing now handles HTTPS/SVCB address hints, multiple service targets and additional-section addresses. IPv6 hints follow AAAA filtering, shorter DNS answers do not shorten earlier address lifetimes, and failed ipset writes return SERVFAIL rather than unrouted addresses.
+          To migrate from a 2026.x.x.x release, run the current installer once: the old updater does not understand three-part versions. The installer handles the version transition, verifies the package checksum and backs up the configuration.
 
-          Entware / Keenetic / Netcraze installation and updates are documented in README.md. Run `magitrickle-update` for future updates from this fork. Existing configuration is backed up and preserved.
+          Installation: https://github.com/WeirdPhrog/WeirdTrickle#установка-из-этого-форка-keenetic--netcraze--entware
+
+          Future updates: `weirdtrickle-update`. The compatibility command `magitrickle-update` is also included. Feature changes and routing guarantees are documented in README.md.
 
           CI includes unit/race tests, large-list benchmarks, real IPv4/IPv6 LAN forwarding with WAN leak counters on iptables legacy/nft, a 65537-entry ipset, DNS routing failure tests, route-restoration tests, installer tests, frontend checks and router package builds. These tests run in isolated Linux namespaces, not on a physical Keenetic/Netcraze router.
           EOF
@@ -210,7 +214,7 @@ jobs:
               exit 0
             fi
           else
-            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "MagiTrickle fork $VERSION" --notes-file /tmp/release-notes --draft
+            gh release create "v$VERSION" --verify-tag --target "$GITHUB_SHA" --title "WeirdTrickle $VERSION" --notes-file /tmp/release-notes --draft
           fi
           gh release upload "v$VERSION" release/* --clobber
           gh release edit "v$VERSION" --draft=false --latest

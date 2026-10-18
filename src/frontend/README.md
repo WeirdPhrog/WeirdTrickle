@@ -1,4 +1,4 @@
-# MagiTrickle Web UI
+# WeirdTrickle Web UI
 
 Built with [Svelte](https://svelte.dev/), [Bits UI](https://www.bits-ui.com/) lib and TypeScript.
 

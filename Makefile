@@ -7,39 +7,15 @@
 # Package info
 
 PKG_NAME := magitrickle
-PKG_DESCRIPTION := DNS-based routing application
+PKG_DESCRIPTION := WeirdTrickle DNS-based routing application
 PKG_LICENSE := GPL-3.0-or-later
-PKG_URL := https://github.com/WeirdPhrog/MagiTrickle
+PKG_URL := https://github.com/WeirdPhrog/WeirdTrickle
 PKG_MAINTAINER := WeirdPhrog (fork); upstream: Vladimir Avtsenov
 
-ifeq ($(strip $(PKG_VERSION)),)
-	TAG := $(shell git describe --tags --abbrev=0 2> /dev/null)
-	COMMITS_SINCE_TAG := $(shell [ -n "$(TAG)" ] && git rev-list $(TAG)..HEAD --count 2>/dev/null || echo 0)
-
-	ifneq ($(strip $(TAG)),)
-		ifeq ($(strip $(COMMITS_SINCE_TAG)),0)
-			PKG_VERSION := $(shell echo "$(TAG)" | sed -e 's/^v//' -e 's/-rev[0-9]*$$//')
-			TAG_REVISION := $(shell echo "$(TAG)" | grep -oE 'rev[0-9]+$$' | sed 's/rev//')
-			ifneq ($(strip $(TAG_REVISION)),)
-				PKG_REVISION ?= $(TAG_REVISION)
-			endif
-		endif
-	endif
-
-	ifeq ($(strip $(PKG_VERSION)),)
-		PKG_VERSION_PRERELEASE := $(if $(TAG),$(shell echo "$(TAG)" | sed -e 's/^v//' -e 's/-rev[0-9]*$$//' | awk -F. 'BEGIN{OFS="."} {$$NF=$$NF+1; print}'),0.0.0)
-		PRERELEASE_DATE := $(shell date -u +%Y%m%d%H%M%S)
-		COMMIT := $(shell git rev-parse --short HEAD)
-		PKG_VERSION := $(PKG_VERSION_PRERELEASE)~git$(PRERELEASE_DATE).$(COMMIT)
-	endif
-endif
-ifeq ($(strip $(PKG_VERSION_DISPLAY)),)
-	ifeq ($(strip $(PKG_VERSION_PRERELEASE)),)
-		PKG_VERSION_DISPLAY := $(PKG_VERSION)
-	else
-		PKG_VERSION_DISPLAY := $(PKG_VERSION_PRERELEASE) ($(COMMIT))
-	endif
-endif
+# VERSION is the source of truth for local builds and CI. A release tag must
+# match it; the workflow validates this before building or publishing anything.
+PKG_VERSION ?= $(strip $(shell cat VERSION))
+PKG_VERSION_DISPLAY ?= $(PKG_VERSION)
 PKG_VERSION_APK := $(shell echo "$(PKG_VERSION)" | sed -E 's/~git([0-9]+)\.[^.]+$$/_pre\1/')
 PKG_REVISION ?= 1
 
@@ -250,8 +226,9 @@ prepare_files: build
 	$(if $(filter entware,$(PLATFORM)), $(if $(filter %_kn,$(TARGET)), $(call _copy_files,./files/entware_kn)))
 	$(if $(filter openwrt,$(PLATFORM)), $(call _copy_files,./files/openwrt))
 ifeq ($(PLATFORM),entware)
-	cp install.sh "$(BIN_DIR)/magitrickle-update"
-	chmod 755 "$(BIN_DIR)/magitrickle-update"
+	cp install.sh "$(BIN_DIR)/weirdtrickle-update"
+	chmod 755 "$(BIN_DIR)/weirdtrickle-update"
+	ln -sf weirdtrickle-update "$(BIN_DIR)/magitrickle-update"
 endif
 
 $(BUILD_KEY_APK_SEC):
