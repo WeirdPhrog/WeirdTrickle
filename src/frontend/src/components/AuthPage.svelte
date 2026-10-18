@@ -118,7 +118,12 @@
     width: 100vw;
     box-sizing: border-box;
     overflow: hidden;
-    background: linear-gradient(155deg, #10131d 0%, #111827 52%, #0f1420 100%);
+    background: linear-gradient(
+      155deg,
+      var(--bg-dark-extra) 0%,
+      var(--bg-dark) 52%,
+      var(--bg-dark-extra) 100%
+    );
   }
 
   .auth-page::before {
@@ -128,9 +133,23 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(78rem 52rem at 8% 20%, rgba(66, 189, 249, 0.08) 0%, rgba(66, 189, 249, 0.03) 38%, transparent 74%),
-      radial-gradient(72rem 56rem at 92% 82%, rgba(85, 158, 255, 0.07) 0%, rgba(85, 158, 255, 0.025) 40%, transparent 76%),
-      radial-gradient(54rem 40rem at 52% 58%, rgba(11, 17, 30, 0.42) 0%, transparent 72%);
+      radial-gradient(
+        78rem 52rem at 8% 20%,
+        color-mix(in srgb, var(--accent) 8%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 3%, transparent) 38%,
+        transparent 74%
+      ),
+      radial-gradient(
+        72rem 56rem at 92% 82%,
+        color-mix(in srgb, var(--accent) 7%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 2.5%, transparent) 40%,
+        transparent 76%
+      ),
+      radial-gradient(
+        54rem 40rem at 52% 58%,
+        color-mix(in srgb, var(--bg-dark-extra) 42%, transparent) 0%,
+        transparent 72%
+      );
     filter: blur(16px);
     opacity: 0.72;
   }
@@ -141,7 +160,11 @@
     inset: 0;
     pointer-events: none;
     z-index: 0;
-    background: radial-gradient(110% 95% at 50% 50%, transparent 58%, rgba(6, 9, 16, 0.28) 100%);
+    background: radial-gradient(
+      110% 95% at 50% 50%,
+      transparent 58%,
+      color-mix(in srgb, var(--bg-dark-extra) 28%, transparent) 100%
+    );
   }
 
   .left-panel {

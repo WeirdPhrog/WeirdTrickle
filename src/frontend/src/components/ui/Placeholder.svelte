@@ -130,7 +130,7 @@
   }
 
   .card[data-variant="loading"] .icon {
-    color: var(--blue-light-extra);
+    color: var(--accent);
   }
 
   .content {

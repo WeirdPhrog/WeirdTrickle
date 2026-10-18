@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-10-18
+
+### Изменено
+
+- Тёмная палитра WebUI получила приглушённый зелёный оттенок и мягкий мятный акцент в цвет маскота. Обновлены фон, панели, вкладки, поля, переключатели и страница входа с сохранением привычной яркости и читаемости.
+
 ## [1.0.3] — 2026-10-18
 
 ### Изменено
@@ -56,7 +62,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.3...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.4...develop
+[1.0.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.0...v1.0.1
