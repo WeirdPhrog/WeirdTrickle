@@ -239,6 +239,7 @@ func (h *Handler) GetGroup(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	types.GroupRes
 //	@Failure		400		{object}	types.ErrorRes
 //	@Failure		404		{object}	types.ErrorRes
+//	@Failure		409		{object}	types.ErrorRes
 //	@Failure		500		{object}	types.ErrorRes
 //	@Router			/api/v1/groups/{groupID} [put]
 func (h *Handler) PutGroup(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +315,7 @@ func (h *Handler) GetRules(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	types.RulesRes
 //	@Failure		400		{object}	types.ErrorRes
 //	@Failure		404		{object}	types.ErrorRes
+//	@Failure		409		{object}	types.ErrorRes
 //	@Failure		500		{object}	types.ErrorRes
 //	@Router			/api/v1/groups/{groupID}/rules [put]
 func (h *Handler) PutRules(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +364,7 @@ func (h *Handler) PutRules(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	types.RuleRes
 //	@Failure		400		{object}	types.ErrorRes
 //	@Failure		404		{object}	types.ErrorRes
+//	@Failure		409		{object}	types.ErrorRes
 //	@Failure		500		{object}	types.ErrorRes
 //	@Router			/api/v1/groups/{groupID}/rules [post]
 func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
@@ -414,6 +417,7 @@ func (h *Handler) GetRule(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	types.RuleRes
 //	@Failure		400		{object}	types.ErrorRes
 //	@Failure		404		{object}	types.ErrorRes
+//	@Failure		409		{object}	types.ErrorRes
 //	@Failure		500		{object}	types.ErrorRes
 //	@Router			/api/v1/groups/{groupID}/rules/{ruleID} [put]
 func (h *Handler) PutRule(w http.ResponseWriter, r *http.Request) {
@@ -444,6 +448,7 @@ func (h *Handler) PutRule(w http.ResponseWriter, r *http.Request) {
 //	@Param			save	query	bool	false	"Сохранить изменения в конфигурационный файл"
 //	@Success		200
 //	@Failure		404	{object}	types.ErrorRes
+//	@Failure		409	{object}	types.ErrorRes
 //	@Failure		500	{object}	types.ErrorRes
 //	@Router			/api/v1/groups/{groupID}/rules/{ruleID} [delete]
 func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {

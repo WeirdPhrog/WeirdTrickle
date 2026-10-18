@@ -17,7 +17,8 @@ type GroupReq struct {
 	Name      string    `json:"name" example:"Routing"`
 	Color     string    `json:"color" example:"#ffffff"`
 	Interface string    `json:"interface" example:"nwg0"`
-	Enable    *bool     `json:"enable" example:"true" TODO:"Make required after 1.0.0"`
+	// Optional to preserve existing clients; omission keeps the current/default value.
+	Enable *bool `json:"enable" example:"true"`
 	RulesReq
 }
 

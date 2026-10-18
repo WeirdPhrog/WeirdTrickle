@@ -1,4 +1,21 @@
 definitions:
+  auth.LoginRequest:
+    properties:
+      login:
+        type: string
+      password:
+        type: string
+    type: object
+  auth.LoginResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  auth.StatusResponse:
+    properties:
+      enabled:
+        type: boolean
+    type: object
   types.ErrorRes:
     properties:
       error:
@@ -11,6 +28,8 @@ definitions:
         example: '#ffffff'
         type: string
       enable:
+        description: Optional to preserve existing clients; omission keeps the current/default
+          value.
         example: true
         type: boolean
       id:
@@ -68,6 +87,9 @@ definitions:
       id:
         example: nwg0
         type: string
+      name:
+        example: Home
+        type: string
     type: object
   types.InterfacesRes:
     properties:
@@ -121,6 +143,13 @@ definitions:
         example: domain
         type: string
     type: object
+  types.RulesReq:
+    properties:
+      rules:
+        items:
+          $ref: '#/definitions/types.RuleReq'
+        type: array
+    type: object
   types.RulesRes:
     properties:
       rules:
@@ -128,11 +157,192 @@ definitions:
           $ref: '#/definitions/types.RuleRes'
         type: array
     type: object
+  types.SubscriptionReq:
+    properties:
+      enable:
+        description: Optional to preserve existing clients; omission keeps the current/default
+          value.
+        example: true
+        type: boolean
+      id:
+        example: 0a1b2c3d
+        type: string
+      interface:
+        example: nwg0
+        type: string
+      interval:
+        example: 86400
+        type: integer
+      lastUpdate:
+        example: 1700000000
+        type: integer
+      name:
+        example: Subscription
+        type: string
+      rules:
+        items:
+          $ref: '#/definitions/types.SubscriptionRuleReq'
+        type: array
+      url:
+        example: https://example.com/list.txt
+        type: string
+    type: object
+  types.SubscriptionRes:
+    properties:
+      enable:
+        example: true
+        type: boolean
+      id:
+        example: 0a1b2c3d
+        type: string
+      interface:
+        example: nwg0
+        type: string
+      interval:
+        example: 86400
+        type: integer
+      lastUpdate:
+        example: 1700000000
+        type: integer
+      name:
+        example: Subscription
+        type: string
+      rules:
+        items:
+          $ref: '#/definitions/types.SubscriptionRuleRes'
+        type: array
+      url:
+        example: https://example.com/list.txt
+        type: string
+    type: object
+  types.SubscriptionRuleReq:
+    properties:
+      enable:
+        example: true
+        type: boolean
+      id:
+        example: 0a1b2c3d
+        type: string
+      rule:
+        example: example.com
+        type: string
+      type:
+        example: domain
+        type: string
+    type: object
+  types.SubscriptionRuleRes:
+    properties:
+      enable:
+        example: true
+        type: boolean
+      id:
+        example: 0a1b2c3d
+        type: string
+      rule:
+        example: example.com
+        type: string
+      type:
+        example: domain
+        type: string
+    type: object
+  types.SubscriptionRulesRes:
+    properties:
+      rules:
+        items:
+          $ref: '#/definitions/types.SubscriptionRuleRes'
+        type: array
+    type: object
+  types.SubscriptionSettingsReq:
+    properties:
+      fetchInterface:
+        type: string
+    required:
+    - fetchInterface
+    type: object
+  types.SubscriptionSettingsRes:
+    properties:
+      fetchInterface:
+        type: string
+    type: object
+  types.SubscriptionSyncReq:
+    properties:
+      url:
+        example: https://example.com/list.txt
+        type: string
+    type: object
+  types.SubscriptionsReq:
+    properties:
+      subscriptions:
+        items:
+          $ref: '#/definitions/types.SubscriptionReq'
+        type: array
+    type: object
+  types.SubscriptionsRes:
+    properties:
+      subscriptions:
+        items:
+          $ref: '#/definitions/types.SubscriptionRes'
+        type: array
+    type: object
 info:
   contact: {}
-  title: MagiTrickle API
-  version: "0.1"
+  description: |-
+    HTTP API v1. This API version is separate from the application release and configVersion.
+    When authentication is enabled, send Authorization: Bearer <token>; obtain a token through POST /api/v1/auth.
+  title: WeirdTrickle API
+  version: "1.0"
 paths:
+  /api/v1/auth:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.StatusResponse'
+      summary: Проверить, включена ли авторизация
+      tags:
+      - auth
+    post:
+      consumes:
+      - application/json
+      description: 'Возвращает токен для заголовка Authorization: Bearer <token>.'
+      parameters:
+      - description: Логин и пароль
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponse'
+        "400":
+          description: Некорректные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Неверные учётные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Авторизация отключена
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить токен авторизации
+      tags:
+      - auth
   /api/v1/groups:
     get:
       description: Возвращает список групп
@@ -315,6 +525,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
         "500":
           description: Internal Server Error
           schema:
@@ -384,6 +598,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
         "500":
           description: Internal Server Error
           schema:
@@ -410,7 +628,7 @@ paths:
         name: json
         required: true
         schema:
-          $ref: '#/definitions/types.RulesRes'
+          $ref: '#/definitions/types.RulesReq'
       produces:
       - application/json
       responses:
@@ -424,6 +642,10 @@ paths:
             $ref: '#/definitions/types.ErrorRes'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/types.ErrorRes'
         "500":
@@ -458,6 +680,10 @@ paths:
           description: OK
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/types.ErrorRes'
         "500":
@@ -538,6 +764,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
         "500":
           description: Internal Server Error
           schema:
@@ -545,6 +775,249 @@ paths:
       summary: Обновить правило
       tags:
       - rules
+  /api/v1/subscriptions:
+    get:
+      description: Возвращает список подписок
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SubscriptionsRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Получить список подписок
+      tags:
+      - subscriptions
+    post:
+      consumes:
+      - application/json
+      description: Создает подписку
+      parameters:
+      - description: Сохранить изменения в конфигурационный файл
+        in: query
+        name: save
+        type: boolean
+      - description: Тело запроса
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/types.SubscriptionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Создать подписку
+      tags:
+      - subscriptions
+    put:
+      consumes:
+      - application/json
+      description: Обновляет список подписок
+      parameters:
+      - description: Сохранить изменения в конфигурационный файл
+        in: query
+        name: save
+        type: boolean
+      - description: Тело запроса
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/types.SubscriptionsReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Обновить список подписок
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/{subscriptionID}:
+    delete:
+      description: Удаляет подписку
+      parameters:
+      - description: ID подписки
+        in: path
+        name: subscriptionID
+        required: true
+        type: string
+      - description: Сохранить изменения в конфигурационный файл
+        in: query
+        name: save
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Удалить подписку
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/{subscriptionID}/sync:
+    post:
+      consumes:
+      - application/json
+      description: Загружает правила по URL и обновляет подписку
+      parameters:
+      - description: ID подписки
+        in: path
+        name: subscriptionID
+        required: true
+        type: string
+      - description: Сохранить изменения в конфигурационный файл
+        in: query
+        name: save
+        type: boolean
+      - description: Переопределение URL для синхронизации
+        in: body
+        name: json
+        schema:
+          $ref: '#/definitions/types.SubscriptionSyncReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Синхронизировать подписку
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/rules:
+    get:
+      description: Загружает правила по URL, без сохранения
+      parameters:
+      - description: URL подписки
+        in: query
+        name: url
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SubscriptionRulesRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Получить правила подписки по URL
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/settings:
+    get:
+      description: Пустой fetchInterface означает системный маршрут. Настройка относится
+        ко всем загрузкам URL подписок.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SubscriptionSettingsRes'
+      summary: Получить общий интерфейс загрузки подписок
+      tags:
+      - subscriptions
+    put:
+      consumes:
+      - application/json
+      description: fetchInterface обязателен; пустая строка выбирает системный маршрут.
+        Настройка сохраняется сразу. При ошибке загрузки через выбранный интерфейс
+        выполняется повтор через системный маршрут.
+      parameters:
+      - description: Интерфейс загрузки
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/types.SubscriptionSettingsReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SubscriptionSettingsRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorRes'
+      summary: Сохранить общий интерфейс загрузки подписок
+      tags:
+      - subscriptions
   /api/v1/system/config/save:
     post:
       description: Сохраняет текущую конфигурацию в постоянную память

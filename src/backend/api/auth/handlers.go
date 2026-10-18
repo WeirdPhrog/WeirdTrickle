@@ -20,12 +20,32 @@ type StatusResponse struct {
 	Enabled bool `json:"enabled"`
 }
 
+// StatusHandler
+//
+// @Summary Проверить, включена ли авторизация
+// @Tags auth
+// @Produce json
+// @Success 200 {object} StatusResponse
+// @Router /api/v1/auth [get]
 func StatusHandler(app app.Main) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJson(w, http.StatusOK, StatusResponse{Enabled: app.Config().HTTPWeb.Auth.Enabled})
 	}
 }
 
+// LoginHandler
+//
+// @Summary Получить токен авторизации
+// @Description Возвращает токен для заголовка Authorization: Bearer <token>.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param json body LoginRequest true "Логин и пароль"
+// @Success 200 {object} LoginResponse
+// @Failure 400 {object} map[string]string "Некорректные данные"
+// @Failure 403 {object} map[string]string "Неверные учётные данные"
+// @Failure 404 {object} map[string]string "Авторизация отключена"
+// @Router /api/v1/auth [post]
 func LoginHandler(app app.Main) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !app.Config().HTTPWeb.Auth.Enabled {

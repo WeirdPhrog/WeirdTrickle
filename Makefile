@@ -110,9 +110,12 @@ BUILD_KEY_APK_PUB ?= public-key.pem
 # Targets
 #
 
-.PHONY: _return_export_dynamic_env all clear clean download download_backend download_frontend redownload redownload_backend redownload_frontend build build_backend build_frontend rebuild rebuild_backend rebuild_frontend prepare_files package package_ipk FORCE
+.PHONY: _return_export_dynamic_env all clear clean download download_backend download_frontend redownload redownload_backend redownload_frontend build build_backend build_frontend rebuild rebuild_backend rebuild_frontend prepare_files package package_ipk swagger FORCE
 
 all: download build package
+
+swagger:
+	cd ./src/backend && go run github.com/swaggo/swag/cmd/swag@v1.16.6 init --dir ./api --generalInfo doc.go --output ../../docs --outputTypes yaml
 
 _return_export_dynamic_env:
 	@bash -c 'printf "COMMIT=%q\n" "$(COMMIT)"'
