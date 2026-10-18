@@ -8,6 +8,7 @@
   // import LogsPanel from "../../modules/logs/LogsPanel.svelte";
   // import SettingsPanel from "../../modules/settings/SettingsPanel.svelte";
   import Overlay from "../feedback/Overlay.svelte";
+  import RoutingWarning from "../feedback/RoutingWarning.svelte";
   import ScrollToTop from "../feedback/ScrollToTop.svelte";
   import SnowField from "../feedback/SnowField.svelte";
   import Toast from "../feedback/Toast.svelte";
@@ -105,6 +106,7 @@
     </nav>
 
     <article>
+      <RoutingWarning />
       <Tabs.Content value="groups">
         <GroupsView onRenderComplete={() => (isRenderCompleteGroups = true)} />
       </Tabs.Content>

@@ -148,5 +148,9 @@
   "Change interface": "Изменить интерфейс",
   "State": "Состояние",
   "Copy": "Копировать",
-  "Delete": "Удалить"
+  "Delete": "Удалить",
+  "Routing suspended": "Маршрутизация приостановлена",
+  "Routing recovery is pending; traffic may be blocked.": "Восстановление правил ещё не завершено; доступ через выбранный интерфейс может быть заблокирован.",
+  "Retry no earlier than": "Следующая попытка не раньше",
+  "Routing status unavailable; showing the last known state.": "Статус маршрутизации недоступен; показано последнее известное состояние."
 }

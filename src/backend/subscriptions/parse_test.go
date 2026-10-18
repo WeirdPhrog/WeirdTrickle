@@ -148,6 +148,33 @@ func TestRefreshRulesPreservesExistingOverrides(t *testing.T) {
 	}
 }
 
+func TestRefreshRulesReplacesUnsupportedSavedTypesWithoutEnablingRules(t *testing.T) {
+	existing := []*models.SubscriptionRule{
+		{ID: intID.ID{1}, Rule: ".ua", Type: "removed-type", Enable: false},
+		{ID: intID.ID{2}, Rule: "example.com", Type: models.RuleTypeDomain, Enable: false},
+	}
+	rules, changed, err := PlanRefresh(existing, ".ua\nexample.com\n")
+	if err != nil || !changed || len(rules) != 2 {
+		t.Fatalf("failed to refresh an obsolete saved type: %+v, %t, %v", rules, changed, err)
+	}
+	if rules[0].Type != models.RuleTypeNamespace || rules[0].Rule != "ua" || rules[1].Type != models.RuleTypeDomain {
+		t.Fatalf("obsolete type was retained or supported override lost: %+v", rules)
+	}
+	for i, rule := range rules {
+		if rule.Enable || rule.ID != existing[i].ID {
+			t.Fatal("re-detecting a type changed the ID or enabled the rule")
+		}
+	}
+	if existing[0].Type != "removed-type" || existing[0].Rule != ".ua" {
+		t.Fatal("refresh mutated the original snapshot")
+	}
+	// A discarded type is not a conflicting override for a canonical alias.
+	existing = append(existing[:1], &models.SubscriptionRule{ID: intID.ID{3}, Rule: "ua", Type: models.RuleTypeNamespace, Enable: false})
+	if _, _, err := PlanRefresh(existing, ".ua"); err != nil {
+		t.Fatalf("obsolete type falsely conflicted with its supported alias: %v", err)
+	}
+}
+
 func TestSameRulesIgnoresOrder(t *testing.T) {
 	left := []*models.SubscriptionRule{
 		{ID: intID.ID{0x01, 0x02, 0x03, 0x04}, Rule: "example.com", Type: models.RuleTypeDomain, Enable: true},

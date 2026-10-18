@@ -30,12 +30,13 @@ var (
 type App struct {
 	enabled atomic.Bool
 
-	config         models.AppConfig
-	configSnapshot atomic.Pointer[models.AppConfig]
-	dnsRules       atomic.Pointer[dnsRuleSnapshot]
-	stateMu        sync.RWMutex
-	configFileMu   sync.Mutex
-	configLoadErr  error
+	config                 models.AppConfig
+	configSnapshot         atomic.Pointer[models.AppConfig]
+	dnsRules               atomic.Pointer[dnsRuleSnapshot]
+	routingRestoresPending atomic.Bool
+	stateMu                sync.RWMutex
+	configFileMu           sync.Mutex
+	configLoadErr          error
 
 	subscriptionSyncMu  sync.Mutex
 	subscriptionRetries map[intID.ID]subscriptionRetry

@@ -3,6 +3,7 @@ package magitrickle
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"magitrickle/models"
 	"magitrickle/rulesets"
@@ -11,17 +12,23 @@ import (
 
 // Only failed rollbacks are retried. Healthy sets and routing choices are not
 // rebuilt, and a suspended route is released only after both families restore.
-func (a *App) retryRoutingRestores() error {
+func (a *App) retryRoutingRestores(now time.Time) error {
+	if !a.routingRestoresPending.Load() {
+		return nil
+	}
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 	var errs []error
+	pending := false
 	for _, sets := range [][]*RuleSet{a.userRuleSets, a.subscriptionRuleSets} {
 		for _, g := range sets {
-			if err := g.retryRestore(); err != nil {
+			if err := g.retryRestore(now); err != nil {
 				errs = append(errs, fmt.Errorf("restore routing for %s: %w", g.RuntimeKey(), err))
 			}
+			pending = pending || g.restoreState.Load() != nil
 		}
 	}
+	a.routingRestoresPending.Store(pending)
 	return errors.Join(errs...)
 }
 

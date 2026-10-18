@@ -23,12 +23,12 @@ type RuleSet struct {
 	enabled atomic.Bool
 	locker  sync.Mutex
 
-	app            *App
-	ipset          *netfilterTools.IPSet
-	ipsetToLink    *netfilterTools.IPSetToLink
-	permanentIPv4  map[netfilterTools.IPv4Subnet]bool
-	permanentIPv6  map[netfilterTools.IPv6Subnet]bool
-	restorePending bool // protected by locker; retry a failed rollback while fail-closed
+	app           *App
+	ipset         *netfilterTools.IPSet
+	ipsetToLink   *netfilterTools.IPSetToLink
+	permanentIPv4 map[netfilterTools.IPv4Subnet]bool
+	permanentIPv6 map[netfilterTools.IPv6Subnet]bool
+	restoreState  atomic.Pointer[routingRestoreState]
 }
 
 type ruleSetModel struct {
@@ -137,7 +137,7 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 		// DNS additions use this same lock. Prepare replacement sets without
 		// unlinking the existing packet classification or policy routes.
 		g.storeModel(model)
-		changed := g.restorePending || !sameRules(previous.Rules, model.Rules)
+		changed := g.restoreState.Load() != nil || !sameRules(previous.Rules, model.Rules)
 		if changed {
 			if err := g.sync(); err != nil {
 				g.storeModel(previous)
@@ -151,7 +151,7 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 			}
 			return err
 		}
-		g.restorePending = false
+		g.restoreState.Store(nil)
 		return nil
 	}
 	if running && previous.Enable != model.Enable {
@@ -377,7 +377,7 @@ func (g *RuleSet) disable() error {
 		g.ipset = nil
 	}
 	g.enabled.Store(false)
-	g.restorePending = false
+	g.restoreState.Store(nil)
 	return nil
 }
 
@@ -587,10 +587,16 @@ func (g *RuleSet) restoreModel(model *models.Group) error {
 	return g.restoreRuntimeLocked(model)
 }
 
-func (g *RuleSet) restoreRuntimeLocked(model *models.Group) error {
+func (g *RuleSet) restoreRuntimeLocked(model *models.Group) (err error) {
 	// Restore contents before releasing a suspended interface, and remove
 	// additions retained during preparation even if the model never changed.
-	g.restorePending = true
+	defer func() {
+		if err != nil {
+			g.recordRestoreFailure(err, time.Now())
+		} else {
+			g.restoreState.Store(nil)
+		}
+	}()
 	g.storeModel(model)
 	if err := g.ipsetToLink.SetInterface(netfilterTools.Blackhole); err != nil {
 		return err
@@ -601,14 +607,22 @@ func (g *RuleSet) restoreRuntimeLocked(model *models.Group) error {
 	if err := g.ipsetToLink.SetInterface(model.Interface); err != nil {
 		return err
 	}
-	g.restorePending = false
 	return nil
 }
 
-func (g *RuleSet) retryRestore() error {
+func (g *RuleSet) retryRestore(now time.Time) error {
+	state := g.restoreState.Load()
+	if state == nil || now.Before(state.next) {
+		return nil
+	}
 	g.locker.Lock()
 	defer g.locker.Unlock()
-	if !g.restorePending || !g.Enabled() || !g.ConfiguredEnabled() {
+	state = g.restoreState.Load()
+	if state == nil || now.Before(state.next) {
+		return nil
+	}
+	if !g.Enabled() || !g.ConfiguredEnabled() {
+		g.restoreState.Store(nil)
 		return nil
 	}
 	return g.restoreRuntimeLocked(g.Model())
