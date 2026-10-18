@@ -16,6 +16,26 @@ import (
 
 const subscriptionAutoUpdateTick = time.Minute
 
+type subscriptionRetry struct {
+	url   string
+	delay time.Duration
+	next  time.Time
+}
+
+// Caller holds subscriptionSyncMu. Retry failures without changing LastUpdate
+// or the user's normal refresh interval; manual sync bypasses this backoff.
+func (a *App) subscriptionFetchFailed(id intID.ID, url string, now time.Time) {
+	previous := a.subscriptionRetries[id]
+	delay := time.Minute
+	if previous.url == url {
+		delay = min(max(time.Minute, previous.delay*2), 15*time.Minute)
+	}
+	if a.subscriptionRetries == nil {
+		a.subscriptionRetries = make(map[intID.ID]subscriptionRetry)
+	}
+	a.subscriptionRetries[id] = subscriptionRetry{url: url, delay: delay, next: now.Add(delay)}
+}
+
 func (a *App) FetchSubscriptionList(ctx context.Context, url string) (string, error) {
 	return subscriptions.FetchListWithInterface(ctx, url, a.Config().SubscriptionFetchInterface)
 }
@@ -38,6 +58,7 @@ func (a *App) setSubscriptionFetchInterface(name, filename string) error {
 		a.config.SubscriptionFetchInterface = previous
 		return err
 	}
+	a.publishConfigLocked()
 	return nil
 }
 
@@ -52,7 +73,10 @@ func (a *App) SyncSubscriptionRuleSets() error {
 }
 
 func (a *App) syncSubscriptionRuleSetsLocked() error {
-	next, err := a.reconcileRuleSets(a.subscriptionRuleSets, subscriptions.BuildRuntimeRuleSets(a.subscriptions), true)
+	specs := subscriptions.BuildRuntimeRuleSets(a.subscriptions)
+	a.publishDNSRulesLocked(specs)
+	defer a.publishDNSRulesLocked(nil)
+	next, err := a.reconcileRuleSets(a.subscriptionRuleSets, specs, true)
 	if err == nil {
 		a.subscriptionRuleSets = next
 	}
@@ -98,6 +122,7 @@ func (a *App) SyncSubscriptionByID(id intID.ID, now time.Time, urlOverride strin
 }
 
 func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now time.Time, urlOverride string) (app.SubscriptionSyncResult, bool, error) {
+	started := time.Now()
 	a.subscriptionSyncMu.Lock()
 	defer a.subscriptionSyncMu.Unlock()
 
@@ -120,8 +145,12 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 
 	list, err := a.FetchSubscriptionList(ctx, fetchURL)
 	if err != nil {
+		if ctx.Err() == nil {
+			a.subscriptionFetchFailed(id, fetchURL, now.Add(time.Since(started)))
+		}
 		return app.SubscriptionSyncResult{}, false, fmt.Errorf("%w: %v", app.ErrSubscriptionFetch, err)
 	}
+	delete(a.subscriptionRetries, id)
 
 	refreshed, rulesChanged := subscriptions.PlanRefresh(existingRules, list)
 	nowSeconds := uint32(now.Unix())
@@ -170,6 +199,7 @@ func (a *App) SyncDueSubscriptions(now time.Time) (bool, error) {
 }
 
 func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, error) {
+	started := time.Now()
 	a.subscriptionSyncMu.Lock()
 	defer a.subscriptionSyncMu.Unlock()
 
@@ -183,6 +213,9 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 	var due []dueRef
 	for _, sub := range a.subscriptions {
 		if !subscriptions.IsDue(sub, now) {
+			continue
+		}
+		if retry := a.subscriptionRetries[sub.ID]; retry.url == sub.URL && now.Before(retry.next) {
 			continue
 		}
 		due = append(due, dueRef{
@@ -209,9 +242,13 @@ func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, er
 		}
 		list, err := a.FetchSubscriptionList(ctx, item.url)
 		if err != nil {
+			if ctx.Err() == nil {
+				a.subscriptionFetchFailed(item.id, item.url, now.Add(time.Since(started)))
+			}
 			log.Error().Err(err).Str("subscription", item.id.String()).Msg("failed to fetch subscription")
 			continue
 		}
+		delete(a.subscriptionRetries, item.id)
 		refreshed, changed := subscriptions.PlanRefresh(item.existingRules, list)
 		plans = append(plans, planResult{
 			id:        item.id,

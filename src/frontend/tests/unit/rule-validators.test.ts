@@ -12,6 +12,20 @@ import {
 } from "../../src/utils/rule-validators";
 
 describe("Rule validator", () => {
+  it("revalidates a cached row after editing its pattern or type", () => {
+    const rule = { type: "domain", rule: "example.com" };
+    strictEqual(isValidRule(rule), true);
+    rule.rule = "[";
+    strictEqual(isValidRule(rule), false);
+    rule.type = "regex";
+    strictEqual(isValidRule(rule), false);
+    rule.rule = "^example\\.com$";
+    strictEqual(isValidRule(rule), true);
+    rule.type = "domain";
+    strictEqual(isValidRule(rule), false);
+    rule.rule = "example.com";
+    strictEqual(isValidRule(rule), true);
+  });
   it("validates full IPv4 and IPv6 syntax, including prefixes", () => {
     for (const pattern of [
       "::",

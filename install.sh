@@ -1,8 +1,8 @@
 #!/bin/sh
-# Install/update the WeirdPhrog fork on Entware (including Keenetic/Netcraze).
+# Install/update WeirdTrickle on Entware (including Keenetic/Netcraze).
 set -eu
 
-die() { printf 'MagiTrickle: %s\n' "$*" >&2; exit 1; }
+die() { printf 'WeirdTrickle: %s\n' "$*" >&2; exit 1; }
 download() {
     if command -v curl >/dev/null 2>&1; then
         curl -fL --retry 3 --connect-timeout 20 --max-time 300 "$1" -o "$2"
@@ -50,36 +50,48 @@ main() {
     explicit_version=false
     case "${1:-}" in
         '') [ "$#" = 0 ] || die 'Unexpected arguments.' ;;
-        --check) [ "$#" = 1 ] || die 'Usage: magitrickle-update [--check | --version VERSION]'; check_only=true ;;
+        --check) [ "$#" = 1 ] || die 'Usage: weirdtrickle-update [--check | --version VERSION]'; check_only=true ;;
         --version) [ "$#" = 2 ] || die '--version needs a release version.'; version=$2; explicit_version=true ;;
-        *) die 'Usage: magitrickle-update [--check | --version VERSION]' ;;
+        *) die 'Usage: weirdtrickle-update [--check | --version VERSION]' ;;
     esac
     select_target
     mt_tmp=$(mktemp -d /tmp/magitrickle-update.XXXXXX)
     mt_locked=false
-    trap 'rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /opt/var/lock/magitrickle-update.lock; fi' EXIT
+    trap 'rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /tmp/magitrickle-update.lock; fi' EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    base=https://github.com/WeirdPhrog/MagiTrickle/releases
+    base=https://github.com/WeirdPhrog/WeirdTrickle/releases
     if [ -z "$version" ]; then
         download "$base/latest/download/VERSION" "$mt_tmp/VERSION" || die 'Cannot fetch the fork release. Check HTTPS access and CA certificates.'
         version=$(cat "$mt_tmp/VERSION")
     fi
-    printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || die 'Invalid release version.'
+    case "$version" in ''|*[!0-9.]*) die 'Invalid release version.' ;; esac
+    semver='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+    legacy_version='2026\.(1[0-2]|[1-9])\.([12][0-9]|3[01]|[1-9])\.[0-9]+'
+    if ! printf '%s\n' "$version" | grep -Eq "^${semver}$"; then
+        # Old releases remain available for an explicitly requested rollback.
+        if [ "$explicit_version" != true ] || ! printf '%s\n' "$version" | grep -Eq "^${legacy_version}$"; then
+            die 'Invalid release version.'
+        fi
+    fi
     package="magitrickle_${version}-1_entware_${target}.ipk"
     release="$base/download/v$version"
     installed=$("$opkg" status magitrickle | awk '/^Version: / { print $2; exit }')
-    printf 'Fork: WeirdPhrog/MagiTrickle | Target: %s | Installed: %s | Release: %s\n' "$target" "${installed:-none}" "$version-1"
+    printf 'WeirdTrickle | Target: %s | Installed: %s | Release: %s\n' "$target" "${installed:-none}" "$version-1"
     [ "$check_only" = false ] || return 0
     if [ "$installed" = "$version-1" ]; then
         printf 'Already up to date.\n'
         return 0
     fi
     if [ -n "$installed" ] && [ "$explicit_version" = false ] && "$opkg" compare-versions "$installed" '>' "$version-1"; then
-        die 'Installed version is newer. Use --version explicitly to downgrade.'
+        if printf '%s\n' "$installed" | grep -Eq "^${legacy_version}-[0-9]+$"; then
+            printf 'Migrating from calendar versions to WeirdTrickle %s; configuration will be preserved.\n' "$version"
+        else
+            die 'Installed version is newer. Use --version explicitly to downgrade.'
+        fi
     fi
-    mkdir -p /opt/var/lock
-    mkdir /opt/var/lock/magitrickle-update.lock 2>/dev/null || die 'Another update is running (lock: /opt/var/lock/magitrickle-update.lock).'
+    # /tmp is cleared on reboot; a power loss must not leave a permanent lock.
+    mkdir /tmp/magitrickle-update.lock 2>/dev/null || die 'Another update is running (lock: /tmp/magitrickle-update.lock).'
     mt_locked=true
     # Pin both downloads to the same immutable release, even if latest changes.
     download "$release/SHA256SUMS" "$mt_tmp/SHA256SUMS" || die 'Cannot download release checksums.'
@@ -118,7 +130,7 @@ main() {
     /opt/etc/init.d/S99magitrickle restart
     sleep 2
     /opt/etc/init.d/S99magitrickle check || die 'Package installed, but service is not running. Check the router log.'
-    printf 'Installed %s from WeirdPhrog/MagiTrickle. Future updates: magitrickle-update\n' "$version"
+    printf 'Installed WeirdTrickle %s. Future updates: weirdtrickle-update (magitrickle-update also works)\n' "$version"
 }
 
 main "$@"

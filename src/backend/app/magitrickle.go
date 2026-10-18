@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrGroupNotFound        = errors.New("group not found")
+	ErrGroupChanged         = errors.New("group changed during the request; reload and retry")
 	ErrSubscriptionConflict = errors.New("subscription id conflict")
 	ErrSubscriptionNotFound = errors.New("subscription not found")
 	ErrSubscriptionInvalid  = errors.New("subscription invalid")
@@ -32,6 +33,7 @@ type Main interface {
 	ClearGroups()
 	AddGroup(groupModel *models.Group) error
 	UpdateGroup(groupModel *models.Group) error
+	UpdateGroupIfCurrent(groupModel, expected *models.Group) error
 	ReplaceGroups(groups []*models.Group) error
 	RemoveGroupByIndex(idx int)
 	RemoveGroupByID(id intID.ID) (bool, error)

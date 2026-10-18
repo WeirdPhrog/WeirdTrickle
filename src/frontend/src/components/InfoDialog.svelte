@@ -26,8 +26,8 @@
           <a
             target="_blank"
             rel="noopener noreferrer"
-            href="https://github.com/WeirdPhrog/MagiTrickle"
-            >https://github.com/WeirdPhrog/MagiTrickle</a
+            href="https://github.com/WeirdPhrog/WeirdTrickle"
+            >https://github.com/WeirdPhrog/WeirdTrickle</a
           >
         </div>
       </div>
@@ -95,7 +95,7 @@
       </div>
     </div>
     <div class="build">
-      {t("Build")}: {version}
+      WeirdTrickle · {t("Build")}: {version}
     </div>
   </div>
 </GenericDialog>

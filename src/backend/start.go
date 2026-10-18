@@ -25,6 +25,8 @@ import (
 func (a *App) Start(ctx context.Context) (err error) {
 	a.stateMu.RLock()
 	loadErr := a.configLoadErr
+	a.publishConfigLocked()
+	a.publishDNSRulesLocked(nil)
 	a.stateMu.RUnlock()
 	if loadErr != nil {
 		return fmt.Errorf("cannot start with unreadable config: %w", loadErr)

@@ -34,6 +34,16 @@ func validateGroups(groups []*models.Group) error {
 }
 
 func (a *App) UpdateGroup(model *models.Group) error {
+	return a.updateGroup(model, nil)
+}
+
+// API rule operations derive their edits from an immutable request snapshot.
+// Reject a stale snapshot rather than silently discarding another request's edit.
+func (a *App) UpdateGroupIfCurrent(model, expected *models.Group) error {
+	return a.updateGroup(model, expected)
+}
+
+func (a *App) updateGroup(model, expected *models.Group) error {
 	if err := validateGroups([]*models.Group{model}); err != nil {
 		return err
 	}
@@ -41,6 +51,9 @@ func (a *App) UpdateGroup(model *models.Group) error {
 	defer a.stateMu.Unlock()
 	for idx, group := range a.userRuleSets {
 		if group.IDValue() == model.ID {
+			if expected != nil && group.Model() != expected {
+				return app.ErrGroupChanged
+			}
 			models := make([]*models.Group, len(a.userRuleSets))
 			for i, current := range a.userRuleSets {
 				models[i] = current.Model()
@@ -64,7 +77,10 @@ func (a *App) ReplaceGroups(models []*models.Group) error {
 }
 
 func (a *App) replaceGroupsLocked(models []*models.Group) error {
-	next, err := a.reconcileRuleSets(a.userRuleSets, groupruntime.BuildRuntimeRuleSets(models), false)
+	specs := groupruntime.BuildRuntimeRuleSets(models)
+	a.publishDNSRulesLocked(specs)
+	defer a.publishDNSRulesLocked(nil)
+	next, err := a.reconcileRuleSets(a.userRuleSets, specs, false)
 	if err == nil {
 		a.userRuleSets = next
 	}

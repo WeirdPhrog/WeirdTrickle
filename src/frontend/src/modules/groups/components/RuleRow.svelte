@@ -260,7 +260,7 @@
         {/if}
       </div>
       <Tooltip value={t(rule.enable ? "Disable Rule" : "Enable Rule")}>
-        <Switch bind:checked={rule.enable} />
+        <Switch bind:checked={rule.enable} onCheckedChange={store.markDataRevision} />
       </Tooltip>
       <Tooltip value={t("Delete Rule")}>
         <Button

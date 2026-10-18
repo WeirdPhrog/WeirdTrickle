@@ -54,7 +54,7 @@ else:
 
 
 class InstallerTests(unittest.TestCase):
-    version = '2026.10.14.1'
+    version = '1.0.0'
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -75,6 +75,10 @@ class InstallerTests(unittest.TestCase):
         self.script.write_text(source)
         self.release = self.root / 'release'
         self.release.mkdir()
+        self.prepare_release(self.version)
+
+    def prepare_release(self, version):
+        self.version = version
         (self.release / 'VERSION').write_text(self.version + '\n')
         self.manifest = ''
         for target in ['mipsel-3.4', 'mipsel-3.4_kn', 'aarch64-3.10_kn']:
@@ -102,6 +106,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_fresh_keenetic_install(self):
         calls = self.run_installer()
+        self.assertIn('https://github.com/WeirdPhrog/WeirdTrickle/releases/', calls)
         self.assertIn(f'/download/v{self.version}/magitrickle_{self.version}-1_entware_mipsel-3.4_kn.ipk', calls)
         self.assertEqual((self.root / 'flag').read_text(), 'hold')
         self.assertIn('arch mipsel-3.4_kn 250', (self.opt / 'etc/opkg/magitrickle-fork.conf').read_text())
@@ -136,6 +141,30 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('opkg flag', calls)
         self.assertFalse((self.opt / 'etc/opkg').exists())
 
+    def test_old_persistent_lock_does_not_block_update(self):
+        lock = self.opt / 'var/lock/magitrickle-update.lock'
+        lock.mkdir(parents=True)
+        self.assertIn('opkg --force-downgrade', self.run_installer())
+        self.assertFalse((self.root / 'magitrickle-update.lock').exists())
+
+    def test_concurrent_update_is_rejected(self):
+        lock = self.root / 'magitrickle-update.lock'
+        lock.mkdir()
+        self.assertNotIn('opkg --force-downgrade', self.run_installer(success=False))
+        self.assertTrue(lock.exists(), 'must not remove another updater lock')
+
+    def test_architecture_registration_removed_only_on_uninstall(self):
+        source = (Path(__file__).resolve().parents[1] / 'files/entware/_ipk/control/postrm').read_text()
+        script = self.root / 'postrm'
+        script.write_text(source.replace('/opt', str(self.opt)))
+        config = self.opt / 'etc/opkg/magitrickle-fork.conf'
+        config.parent.mkdir(parents=True)
+        for action, remains in [('upgrade', True), ('remove', False), ('purge', False)]:
+            with self.subTest(action=action):
+                config.write_text('arch mipsel-3.4_kn 250\n')
+                subprocess.run(['sh', str(script), action], check=True)
+                self.assertEqual(config.exists(), remains)
+
     def test_current_version_is_noop(self):
         self.existing_config(self.version + '-1')
         self.assertNotIn('opkg --force-downgrade', self.run_installer())
@@ -152,8 +181,37 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('opkg update', self.run_installer(success=False))
 
     def test_invalid_version_never_installs(self):
-        (self.release / 'VERSION').write_text('../bad')
+        for version in ['../bad', '01.0.0', '1.0', '1.0.0\nextra', '2026.10.16.20']:
+            with self.subTest(version=version):
+                (self.release / 'VERSION').write_text(version)
+                self.assertNotIn('opkg update', self.run_installer(success=False))
+
+    def test_calendar_version_migrates_without_losing_config(self):
+        config = self.existing_config('2026.10.16.20-1')
+        before = config.read_bytes()
+        self.env['FAKE_NEWER'] = '1'
+        calls = self.run_installer()
+        self.assertIn('opkg --force-downgrade install', calls)
+        self.assertEqual((self.root / 'installed').read_text(), '1.0.0-1')
+        self.assertEqual(config.read_bytes(), before)
+
+    def test_semver_downgrade_still_refused(self):
+        self.existing_config('1.1.0-1')
+        self.env['FAKE_NEWER'] = '1'
         self.assertNotIn('opkg update', self.run_installer(success=False))
+
+    def test_next_patch_release_installs(self):
+        self.existing_config('1.0.0-1')
+        self.prepare_release('1.0.1')
+        self.run_installer()
+        self.assertEqual((self.root / 'installed').read_text(), '1.0.1-1')
+
+    def test_explicit_legacy_release_remains_available(self):
+        self.existing_config('1.0.0-1')
+        self.prepare_release('2026.10.16.20')
+        calls = self.run_installer('--version', self.version)
+        self.assertNotIn('/latest/', calls)
+        self.assertIn('/download/v2026.10.16.20/', calls)
 
     def test_download_failure_never_installs(self):
         (self.release / 'SHA256SUMS').unlink()

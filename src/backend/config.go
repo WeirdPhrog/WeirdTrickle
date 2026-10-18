@@ -150,6 +150,7 @@ func (a *App) loadConfig(filename string) error {
 		applyIfSet(&a.config.LogLevel, cfg.App.LogLevel)
 		applyIfSet(&a.config.SubscriptionFetchInterface, cfg.App.SubscriptionFetchInterface)
 	}
+	a.publishConfigLocked()
 
 	if cfg.Groups != nil {
 		for _, group := range *cfg.Groups {

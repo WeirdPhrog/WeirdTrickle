@@ -70,10 +70,17 @@ export const VALIDATOP_MAP: Record<string, (pattern: string) => boolean> = {
   subnet6: isValidSubnet6,
 };
 
+// Rows keep their object identity while editing. Revalidate only when the
+// pattern or type changes; discarded rows do not remain in this weak cache.
+const ruleValidity = new WeakMap<object, { type: string; pattern: string; valid: boolean }>();
+
 export function isValidRule(rule: { type: string; rule: string }): boolean {
-  return (
-    rule.rule.length > 0 &&
-    Object.hasOwn(VALIDATOP_MAP, rule.type) &&
-    VALIDATOP_MAP[rule.type](rule.rule)
-  );
+  const type = rule.type;
+  const pattern = rule.rule;
+  const cached = ruleValidity.get(rule);
+  if (cached?.type === type && cached.pattern === pattern) return cached.valid;
+  const valid =
+    pattern.length > 0 && Object.hasOwn(VALIDATOP_MAP, type) && VALIDATOP_MAP[type](pattern);
+  ruleValidity.set(rule, { type, pattern, valid });
+  return valid;
 }

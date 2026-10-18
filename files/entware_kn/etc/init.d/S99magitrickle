@@ -4,7 +4,7 @@ ENABLED=yes
 PROCS=magitrickled
 ARGS=""
 PREARGS=""
-DESC="MagiTrickle Daemon"
+DESC="WeirdTrickle Daemon"
 PATH=/opt/sbin:/opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 UPTIME_MAX_BORDER=300
 

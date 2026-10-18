@@ -636,7 +636,9 @@ export class GroupsStore {
   }
 
   checkRulesValidityState = () => {
-    this.valid_rules = this.data.every((group) => group.rules.every(isValidRule));
+    this.valid_rules = this.data.every((group) =>
+      group.rules.every((rule) => !rule.enable || isValidRule(rule)),
+    );
   };
 
   #sortDuplicateConflicts(conflicts: GroupDuplicateConflict[]) {
