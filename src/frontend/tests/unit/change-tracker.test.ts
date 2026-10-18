@@ -24,6 +24,63 @@ const createItem = (overrides: Partial<RuleItem> = {}): RuleItem => ({
   ...overrides,
 });
 
+describe("ChangeTracker with IDs scoped to their parent", () => {
+  it("tracks a rule independently of a rule with the same ID in another group", () => {
+    const tracker = new ChangeTracker([
+      { id: "group1", rules: [createItem({ id: "shared", enable: true })] },
+      { id: "group2", rules: [createItem({ id: "shared", enable: false })] },
+    ]);
+
+    tracker.data[0].rules[0].enable = false;
+    assert.strictEqual(tracker.isDirty, true);
+    assert.strictEqual(tracker.changes.mutated.length, 1);
+    tracker.data[0].rules[0].enable = true;
+    assert.strictEqual(tracker.isDirty, false);
+  });
+
+  it("keeps both mutations when rules share an ID", () => {
+    const tracker = new ChangeTracker([
+      { id: "group1", rules: [createItem({ id: "shared", name: "First" })] },
+      { id: "group2", rules: [createItem({ id: "shared", name: "Second" })] },
+    ]);
+    tracker.data[0].rules[0].name = "Edited first";
+    tracker.data[1].rules[0].name = "Edited second";
+    assert.strictEqual(tracker.changes.mutated.length, 2);
+    tracker.data[1].rules[0].name = "Second";
+    assert.strictEqual(tracker.isDirty, true);
+    assert.deepStrictEqual(
+      tracker.changes.mutated.map((item: RuleItem) => item.name),
+      ["Edited first"],
+    );
+  });
+
+  it("acknowledging another parent's rules preserves a same-ID unsaved edit", () => {
+    const tracker = new ChangeTracker([
+      { id: "group1", rules: [createItem({ id: "shared" })] },
+      { id: "group2", rules: [createItem({ id: "shared" })] },
+    ]);
+    tracker.data[0].rules[0].enable = false;
+    tracker.acknowledgeUpdate(tracker.data[1], { rules: [createItem({ id: "replacement" })] });
+    assert.strictEqual(tracker.isDirty, true);
+    assert.strictEqual(tracker.changes.mutated.length, 1);
+    assert.strictEqual(tracker.changes.mutated[0].enable, false);
+  });
+
+  it("partial scalar updates retain the baseline links needed for a later parent deletion", () => {
+    const tracker = new ChangeTracker([
+      { id: "group1", lastUpdate: 0, rules: [createItem({ id: "shared" })] },
+      { id: "group2", lastUpdate: 0, rules: [createItem({ id: "shared" })] },
+    ]);
+    tracker.data[0].rules[0].enable = false;
+    tracker.acknowledgeUpdate(tracker.data[1], { lastUpdate: 10 });
+    tracker.data.pop();
+    tracker.acknowledgeDelete(tracker.data, "group2");
+    assert.strictEqual(tracker.isDirty, true);
+    assert.strictEqual(tracker.changes.mutated.length, 1);
+    assert.strictEqual(tracker.changes.deleted.length, 0);
+  });
+});
+
 describe("ChangeTracker", () => {
   it("should initialize clean", () => {
     const data = [createItem({ id: "1" })];
@@ -449,7 +506,7 @@ describe("ChangeTracker", () => {
 
     it("should clean up dirty state of children when parent is updated", () => {
       const tracker = new ChangeTracker([
-        { id: "p1", name: "Parent", children: [{ id: "c1", name: "Child" }] }
+        { id: "p1", name: "Parent", children: [{ id: "c1", name: "Child" }] },
       ]);
       const proxy = tracker.data;
 
@@ -460,12 +517,16 @@ describe("ChangeTracker", () => {
       // Acknowledge parent update
       tracker.acknowledgeUpdate(proxy[0]);
 
-      assert.strictEqual(tracker.isDirty, false, "Tracker should be clean after acknowledging parent update");
+      assert.strictEqual(
+        tracker.isDirty,
+        false,
+        "Tracker should be clean after acknowledging parent update",
+      );
     });
 
     it("should clean up dirty state of children when parent is deleted", () => {
       const tracker = new ChangeTracker([
-        { id: "p1", name: "Parent", children: [{ id: "c1", name: "Child" }] }
+        { id: "p1", name: "Parent", children: [{ id: "c1", name: "Child" }] },
       ]);
       const proxy = tracker.data;
 
@@ -482,7 +543,11 @@ describe("ChangeTracker", () => {
         console.log("Dirty Arrays:", tracker["dirtyArrays"]);
       }
 
-      assert.strictEqual(tracker.isDirty, false, "Tracker should be clean after acknowledging parent delete");
+      assert.strictEqual(
+        tracker.isDirty,
+        false,
+        "Tracker should be clean after acknowledging parent delete",
+      );
     });
   });
 });

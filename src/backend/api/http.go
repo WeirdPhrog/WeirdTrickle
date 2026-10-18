@@ -32,7 +32,7 @@ func SetupHTTP(a app.Main, errChan chan error) (*http.Server, error) {
 		return nil, nil
 	}
 
-	addr := fmt.Sprintf("%s:%d", a.Config().HTTPWeb.Host.Address, a.Config().HTTPWeb.Host.Port)
+	addr := a.Config().HTTPWeb.Host.HostPort()
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("error while listening HTTP %s: %v", addr, err)

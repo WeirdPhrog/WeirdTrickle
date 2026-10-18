@@ -6,6 +6,7 @@ import (
 
 	"magitrickle/api/v1/types"
 	"magitrickle/models"
+	"magitrickle/subscriptions"
 	"magitrickle/utils/intID"
 
 	"github.com/dlclark/regexp2"
@@ -14,9 +15,12 @@ import (
 var colorRegExp = regexp2.MustCompile(`^#[0-9a-f]{6}$`, regexp2.IgnoreCase)
 
 func GroupFromReq(req types.GroupReq, existing *models.Group) (*models.Group, error) {
+	if err := subscriptions.ValidateFetchInterface(req.Interface); err != nil {
+		return nil, fmt.Errorf("invalid routing interface")
+	}
 	var group *models.Group
 	if existing == nil {
-		group = &models.Group{ID: intID.RandomID()}
+		group = &models.Group{ID: intID.RandomID(), Enable: true}
 	} else {
 		copy := *existing
 		group = &copy
@@ -35,7 +39,6 @@ func GroupFromReq(req types.GroupReq, existing *models.Group) (*models.Group, er
 		group.Color = strings.ToLower(req.Color)
 	}
 	group.Interface = req.Interface
-	group.Enable = true
 	if req.Enable != nil {
 		group.Enable = *req.Enable
 	}

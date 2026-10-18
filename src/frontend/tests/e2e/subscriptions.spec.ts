@@ -211,4 +211,23 @@ test.describe("Subscriptions", () => {
     await expect(page.locator("#save-subscriptions")).toHaveClass(/inactive/);
     await expect(page.locator(".subscription-rule")).toContainText("synced.example.com");
   });
+
+  test("syncing another subscription preserves an unsaved same-ID rule", async ({ page }) => {
+    const first = makeSubscription("a1b2c3d4", "https://one.example/list.txt");
+    const second = makeSubscription("b1c2d3e4", "https://two.example/list.txt");
+    second.rules[0].id = first.rules[0].id;
+    const state = await setupSubscriptions(page, [first, second]);
+    const panels = page.locator(".subscription-panel");
+    await panels.first().locator(".action.collapse button").click();
+    await panels.first().locator(".subscription-rule [role=switch]").click();
+    await expect(page.locator("#save-subscriptions")).not.toHaveClass(/inactive/);
+
+    await panels.last().locator(".action.sync button").click();
+    await expect(panels.last().locator(".subscription-rule")).toContainText("synced.example.com");
+    await expect(page.locator("#save-subscriptions")).not.toHaveClass(/inactive/);
+    await page.locator("#save-subscriptions").click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect(state.savedBody?.subscriptions[0].rules[0].enable).toBe(false);
+    expect(state.savedBody?.subscriptions[1].rules[0].rule).toBe("synced.example.com");
+  });
 });

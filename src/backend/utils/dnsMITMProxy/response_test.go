@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -14,6 +15,15 @@ import (
 )
 
 func TestReusedUDPSocketIgnoresUnrelatedResponses(t *testing.T) {
+	for _, reuseID := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reuseID=%t", reuseID), func(t *testing.T) {
+			testReusedUDPSocketIgnoresUnrelatedResponses(t, reuseID)
+		})
+	}
+}
+
+func testReusedUDPSocketIgnoresUnrelatedResponses(t *testing.T, reuseID bool) {
+	t.Helper()
 	server, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -73,8 +83,11 @@ func TestReusedUDPSocketIgnoresUnrelatedResponses(t *testing.T) {
 		}
 		return nil, nil
 	}
-	for _, id := range []uint16{123, 456} {
-		query := new(dns.Msg).SetQuestion("example.com.", dns.TypeA)
+	for i, id := range []uint16{123, 456} {
+		query := new(dns.Msg).SetQuestion(fmt.Sprintf("query%d.example.com.", i), dns.TypeA)
+		if reuseID {
+			id = 123
+		}
 		query.Id = id
 		data, _ := query.Pack()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -84,7 +97,7 @@ func TestReusedUDPSocketIgnoresUnrelatedResponses(t *testing.T) {
 			t.Fatal(err)
 		}
 		var reply dns.Msg
-		if err := reply.Unpack(response); err != nil || reply.Id != id {
+		if err := reply.Unpack(response); err != nil || reply.Id != id || reply.Question[0] != query.Question[0] {
 			t.Fatalf("wrong response: id=%d, error=%v", reply.Id, err)
 		}
 	}
@@ -176,5 +189,44 @@ func TestUnexpectedUDPResponseStillTimesOut(t *testing.T) {
 	var networkErr net.Error
 	if response != nil || !errors.As(err, &networkErr) || !networkErr.Timeout() {
 		t.Fatalf("expected a timeout while discarding the malformed packet, got %v: %v", response, err)
+	}
+}
+
+func TestDNSResponseQuestionMatching(t *testing.T) {
+	query := new(dns.Msg).SetQuestion("Example.COM.", dns.TypeA)
+	request, _ := query.Pack()
+	for _, tc := range []struct {
+		name   string
+		change func(*dns.Msg)
+		match  bool
+	}{
+		{"unchanged", func(*dns.Msg) {}, true},
+		{"case insensitive", func(m *dns.Msg) { m.Question[0].Name = "eXaMpLe.com." }, true},
+		{"different name", func(m *dns.Msg) { m.Question[0].Name = "other.example." }, false},
+		{"different type", func(m *dns.Msg) { m.Question[0].Qtype = dns.TypeAAAA }, false},
+		{"different class", func(m *dns.Msg) { m.Question[0].Qclass = dns.ClassCHAOS }, false},
+		{"different opcode", func(m *dns.Msg) { m.Opcode = dns.OpcodeStatus }, false},
+		{"missing question", func(m *dns.Msg) { m.Question = nil }, false},
+		{"failure with matching question", func(m *dns.Msg) { m.Rcode = dns.RcodeServerFailure }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reply := new(dns.Msg).SetReply(query)
+			tc.change(reply)
+			response, err := reply.Pack()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual := matchesDNSResponse(request, response); actual != tc.match {
+				t.Fatalf("matchesDNSResponse = %t, want %t", actual, tc.match)
+			}
+		})
+	}
+	for _, malformed := range [][]byte{nil, request[:11], append(append([]byte(nil), request[:12]...), 0xc0, 12)} {
+		if len(malformed) >= 3 {
+			malformed[2] |= 0x80
+		}
+		if matchesDNSResponse(request, malformed) {
+			t.Fatal("accepted a malformed question")
+		}
 	}
 }

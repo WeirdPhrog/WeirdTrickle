@@ -489,7 +489,11 @@ func (g *RuleSet) syncRules(rules []*models.Rule, retainOld bool) error {
 
 		default:
 			for _, domainName := range knownDomains {
-				if !domain.IsMatch(domainName) {
+				matched, err := domain.Match(domainName)
+				if err != nil {
+					return fmt.Errorf("DNS rule matching failed: %w", err)
+				}
+				if !matched {
 					continue
 				}
 				domainAddresses := g.app.recordsCache.GetAddresses(domainName)

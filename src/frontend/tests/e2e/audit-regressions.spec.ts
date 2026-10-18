@@ -32,6 +32,24 @@ async function setup(page: Page, groups = [group()], subscriptions: unknown[] = 
   await expect(page.locator(".group-controls")).toBeVisible();
 }
 
+test("same rule IDs in different groups do not hide unsaved changes", async ({ page }) => {
+  await setup(page, [
+    group([{ ...rule(1), enable: true }]),
+    { ...group([{ ...rule(1), enable: false }]), id: "abcdef13" },
+  ]);
+  await page.locator(".group [data-collapsible-trigger]").first().click();
+  const toggle = page.locator(".group").first().locator(".rule [role=switch]");
+  await toggle.click();
+  await expect(page.locator("#save-changes")).not.toHaveClass(/inactive/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }))),
+    )
+    .toBe(true);
+  await toggle.click();
+  await expect(page.locator("#save-changes")).toHaveClass(/inactive/);
+});
+
 test("invalid rules outside the current page block saving and retain the unload warning", async ({
   page,
 }) => {
