@@ -76,10 +76,15 @@ main() {
     fi
     package="magitrickle_${version}-1_entware_${target}.ipk"
     release="$base/download/v$version"
-    installed=$("$opkg" status magitrickle | awk '/^Version: / { print $2; exit }')
+    installed_status=$("$opkg" status magitrickle || :)
+    installed=$(printf '%s\n' "$installed_status" | awk '/^Version: / { print $2; exit }')
+    installed_fork=$(printf '%s\n' "$installed_status" | awk '/^Description: WeirdTrickle( |$)/ { print "true"; exit }')
     printf 'WeirdTrickle | Target: %s | Installed: %s | Release: %s\n' "$target" "${installed:-none}" "$version-1"
+    if [ -n "$installed" ] && [ "$installed_fork" != true ]; then
+        printf 'Installed package is not identified as WeirdTrickle; migration is required.\n'
+    fi
     [ "$check_only" = false ] || return 0
-    if [ "$installed" = "$version-1" ]; then
+    if [ "$installed" = "$version-1" ] && [ "$installed_fork" = true ]; then
         printf 'Already up to date.\n'
         return 0
     fi
@@ -119,7 +124,10 @@ main() {
     "$opkg" update
     # Prevent a general opkg upgrade from replacing this fork with upstream.
     if [ -n "$installed" ]; then "$opkg" flag ok magitrickle; fi
-    if "$opkg" --force-downgrade install "$mt_tmp/$package"; then
+    set -- --force-downgrade
+    # opkg otherwise skips a different package with the same name and version.
+    if [ "$installed" = "$version-1" ]; then set -- "$@" --force-reinstall; fi
+    if "$opkg" "$@" install "$mt_tmp/$package"; then
         "$opkg" flag hold magitrickle
     else
         restore_config
