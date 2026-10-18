@@ -101,7 +101,11 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: radial-gradient(circle, rgba(66, 189, 249, 0.45) 0%, rgba(66, 189, 249, 0) 70%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--accent) 45%, transparent) 0%,
+      transparent 70%
+    );
     opacity: 0;
     transform: scale(0.45);
     transition:
@@ -127,7 +131,7 @@
   .checkbox[data-checked] .box {
     background: var(--accent);
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(66, 189, 249, 0.28);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
   }
 
   .checkbox[data-checked] svg {

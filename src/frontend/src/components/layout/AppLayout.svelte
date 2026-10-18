@@ -189,8 +189,8 @@
   }
 
   :global([data-tabs-trigger][data-state="active"]) {
-    color: var(--blue-light-extra);
-    border-color: var(--blue-light-extra);
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   :global([data-tabs-trigger]:hover) {
