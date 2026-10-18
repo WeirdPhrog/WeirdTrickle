@@ -70,7 +70,9 @@ main() {
     legacy_version='2026\.(1[0-2]|[1-9])\.([12][0-9]|3[01]|[1-9])\.[0-9]+'
     if ! printf '%s\n' "$version" | grep -Eq "^${semver}$"; then
         # Old releases remain available for an explicitly requested rollback.
-        [ "$explicit_version" = true ] && printf '%s\n' "$version" | grep -Eq "^${legacy_version}$" || die 'Invalid release version.'
+        if [ "$explicit_version" != true ] || ! printf '%s\n' "$version" | grep -Eq "^${legacy_version}$"; then
+            die 'Invalid release version.'
+        fi
     fi
     package="magitrickle_${version}-1_entware_${target}.ipk"
     release="$base/download/v$version"
