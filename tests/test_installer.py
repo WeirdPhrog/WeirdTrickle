@@ -33,11 +33,14 @@ elif name == 'opkg':
     elif command == 'status':
         if (root / 'installed').exists():
             print('Version: ' + (root / 'installed').read_text())
+            print('Description: ' + os.environ.get('FAKE_DESCRIPTION', 'WeirdTrickle DNS-based routing application'))
     elif command == 'compare-versions':
         sys.exit(0 if os.environ.get('FAKE_NEWER') else 1)
     elif command == 'flag':
         (root / 'flag').write_text(args[1])
     elif command == '--force-downgrade':
+        if (root / 'installed').exists() and (root / 'installed').read_text() == pathlib.Path(args[-1]).name.split('_')[1] and '--force-reinstall' not in args:
+            sys.exit(0)  # opkg treats the same version as already installed.
         if os.environ.get('FAKE_INSTALL_FAIL'): sys.exit(1)
         (root / 'installed').write_text(pathlib.Path(args[-1]).name.split('_')[1])
         config = root / 'opt/var/lib/magitrickle/config.yaml'
@@ -168,6 +171,29 @@ class InstallerTests(unittest.TestCase):
     def test_current_version_is_noop(self):
         self.existing_config(self.version + '-1')
         self.assertNotIn('opkg --force-downgrade', self.run_installer())
+
+    def test_same_version_upstream_is_reinstalled_and_preserves_config(self):
+        config = self.existing_config(self.version + '-1')
+        before = config.read_bytes()
+        self.env['FAKE_DESCRIPTION'] = 'MagiTrickle DNS-based routing application'
+        calls = self.run_installer()
+        self.assertIn('opkg --force-downgrade --force-reinstall install', calls)
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual((self.root / 'flag').read_text(), 'hold')
+        self.assertEqual(len(list((self.opt / 'var/backups/magitrickle').glob('*.tar.gz'))), 1)
+
+    def test_same_version_unknown_package_is_not_mistaken_for_fork(self):
+        self.existing_config(self.version + '-1')
+        self.env['FAKE_DESCRIPTION'] = ''
+        self.assertIn('opkg --force-downgrade --force-reinstall install', self.run_installer())
+
+    def test_check_same_version_upstream_does_not_reinstall(self):
+        self.existing_config(self.version + '-1')
+        self.env['FAKE_DESCRIPTION'] = 'MagiTrickle DNS-based routing application'
+        calls = self.run_installer('--check')
+        self.assertNotIn('opkg update', calls)
+        self.assertNotIn('opkg --force-downgrade', calls)
+        self.assertNotIn('opkg flag', calls)
 
     def test_corrupt_package_never_installs(self):
         for package in self.release.glob('*.ipk'):

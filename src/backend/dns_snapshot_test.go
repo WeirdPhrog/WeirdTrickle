@@ -8,6 +8,7 @@ import (
 	"magitrickle/constant"
 	"magitrickle/models"
 	"magitrickle/rulesets"
+	"magitrickle/subscriptions"
 	"magitrickle/utils/recordsCache"
 
 	"github.com/miekg/dns"
@@ -52,14 +53,25 @@ func TestUnrelatedDNSDoesNotWaitForRoutingUpdate(t *testing.T) {
 }
 
 func TestDNSSnapshotIncludesPendingRulesAndDropsRolledBackRules(t *testing.T) {
+	next := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeNamespace, Rule: "new.example", Enable: true}}}
+	sub := subscriptions.BuildRuntimeRuleSets([]*models.Subscription{{
+		Enable: true, Interface: "vpn-test", Rules: []*models.SubscriptionRule{
+			{Type: models.RuleTypeNamespace, Rule: "new.example", Enable: true},
+		},
+	}})[0]
+	for name, spec := range map[string]rulesets.Spec{"group": {Model: next}, "subscription": sub} {
+		t.Run(name, func(t *testing.T) { testPendingDNSSnapshotRollback(t, spec) })
+	}
+}
+
+func testPendingDNSSnapshotRollback(t *testing.T, pending rulesets.Spec) {
 	a := &App{}
 	current := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeDomain, Rule: "old.example", Enable: true}}}
 	if err := a.AddGroup(current); err != nil {
 		t.Fatal(err)
 	}
-	next := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeNamespace, Rule: "new.example", Enable: true}}}
 	a.stateMu.Lock()
-	a.publishDNSRulesLocked([]rulesets.Spec{{Model: next}})
+	a.publishDNSRulesLocked([]rulesets.Spec{pending})
 	for _, name := range []string{"old.example", "www.new.example"} {
 		if !a.dnsRules.Load().matches([]string{name}) {
 			t.Errorf("pending update would let %s bypass routing", name)
@@ -81,6 +93,89 @@ func TestDNSSnapshotIncludesPendingRulesAndDropsRolledBackRules(t *testing.T) {
 	}
 	if a.dnsRules.Load().matches([]string{"www.new.example"}) {
 		t.Fatal("rolled-back rules remained in the snapshot")
+	}
+}
+
+func TestPendingSubscriptionDNSWaitsAndFailsClosedIfRoutingIsNotReady(t *testing.T) {
+	for _, refresh := range []bool{false, true} {
+		name := "add"
+		if refresh {
+			name = "refresh"
+		}
+		t.Run(name, func(t *testing.T) {
+			a := &App{config: constant.DefaultAppConfig, recordsCache: recordsCache.New()}
+			a.publishConfigLocked()
+			sub := &models.Subscription{Enable: true, Interface: "vpn-test", Rules: []*models.SubscriptionRule{
+				{Type: models.RuleTypeDomain, Rule: "old.example", Enable: true},
+			}}
+			if refresh {
+				current, err := NewRuleSet(subscriptions.BuildRuntimeRuleSets([]*models.Subscription{sub})[0], a)
+				if err != nil {
+					t.Fatal(err)
+				}
+				a.subscriptionRuleSets = []*RuleSet{current}
+			}
+			sub.Rules = []*models.SubscriptionRule{{Type: models.RuleTypeDomain, Rule: "new.example", Enable: true}}
+			pending := subscriptions.BuildRuntimeRuleSets([]*models.Subscription{sub})
+			if pending[0].Model != nil || !pending[0].Subscription || !pending[0].Enable {
+				t.Fatal("test must exercise an enabled subscription spec without Model")
+			}
+			next, err := NewRuleSet(pending[0], a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// An incomplete runtime must produce SERVFAIL after the update, never
+			// release a usable address just because the pending spec has no Model.
+			next.enabled.Store(true)
+			a.stateMu.Lock()
+			a.publishDNSRulesLocked(pending)
+			if !a.dnsRules.Load().matches([]string{"new.example"}) {
+				t.Error("pending subscription domain is missing from the DNS filter")
+			}
+			if refresh && !a.dnsRules.Load().matches([]string{"old.example"}) {
+				t.Error("previous subscription domain was dropped before commit")
+			}
+			done := make(chan *dns.Msg, 1)
+			go func() {
+				query := new(dns.Msg)
+				query.SetQuestion("new.example.", dns.TypeA)
+				reply := new(dns.Msg)
+				reply.SetReply(query)
+				reply.Answer = []dns.RR{&dns.A{
+					Hdr: dns.RR_Header{Name: "new.example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+					A:   net.ParseIP("192.0.2.1").To4(),
+				}}
+				response, err := a.dnsResponseHook(nil, *query, *reply, "udp")
+				if err != nil {
+					t.Error(err)
+				}
+				done <- response
+			}()
+			var response *dns.Msg
+			early := false
+			select {
+			case response = <-done:
+				early = true
+				t.Error("DNS answer escaped while subscription routing was being applied")
+			case <-time.After(20 * time.Millisecond):
+			}
+			a.subscriptionRuleSets = []*RuleSet{next}
+			a.publishDNSRulesLocked(nil)
+			a.stateMu.Unlock()
+			if !early {
+				select {
+				case response = <-done:
+				case <-time.After(time.Second):
+					t.Fatal("DNS did not resume after the subscription update")
+				}
+			}
+			if response == nil || response.Rcode != dns.RcodeServerFailure || len(response.Answer) != 0 {
+				t.Fatalf("incomplete subscription routing must withhold DNS addresses: %v", response)
+			}
+			if a.dnsRules.Load().matches([]string{"old.example"}) {
+				t.Error("previous subscription domain remained after commit")
+			}
+		})
 	}
 }
 

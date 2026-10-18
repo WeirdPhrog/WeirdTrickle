@@ -35,7 +35,7 @@ func (s *dnsRuleSnapshot) matches(names []string) bool {
 }
 
 // Caller holds stateMu. Include both the old and proposed rules until the
-// transaction (or rollback) finishes, including additions to new groups.
+// transaction (or rollback) finishes, including new groups and subscriptions.
 func (a *App) publishDNSRulesLocked(pending []rulesets.Spec) {
 	snapshot := &dnsRuleSnapshot{}
 	appendGroup := func(group *models.Group) {
@@ -59,7 +59,7 @@ func (a *App) publishDNSRulesLocked(pending []rulesets.Spec) {
 		appendGroup(group.Model())
 	}
 	for _, spec := range pending {
-		appendGroup(spec.Model)
+		appendGroup(modelFromSpec(spec))
 	}
 	a.dnsRules.Store(snapshot)
 }
