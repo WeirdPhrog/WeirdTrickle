@@ -259,6 +259,24 @@ describe("GroupsStore mutations and validation", () => {
     assert.strictEqual(store.dataRevision, 2);
   });
 
+  it("moving a same-ID rule into another group keeps both rules with unique IDs", () => {
+    const store = createStore([
+      makeGroup("g1", [makeRule("abcdef12", "Moving")]),
+      makeGroup("g2", [makeRule("abcdef12", "Existing")]),
+    ]);
+    store.changeRuleIndex(0, 0, 1, 0, "abcdef12", "before");
+    assert.strictEqual(store.data[0].rules.length, 0);
+    const rules = store.data[1].rules;
+    assert.deepStrictEqual(
+      rules.map((rule) => rule.name),
+      ["Moving", "Existing"],
+    );
+    assert.strictEqual(rules[1].id, "abcdef12");
+    assert.notStrictEqual(rules[0].id, rules[1].id);
+    assert.match(rules[0].id, /^[0-9a-f]{8}$/);
+    assert.strictEqual(store.dataRevision, 1);
+  });
+
   it("sortGroupRules and restoreGroupRulesOrder update order with return flags", () => {
     const store = createStore([makeGroup("g1", [makeRule("r1", "beta"), makeRule("r2", "alpha")])]);
     const initial = ruleIds(store, 0);

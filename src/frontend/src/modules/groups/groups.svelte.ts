@@ -4,7 +4,7 @@ import { t } from "../../data/locale.svelte";
 import { ChangeTracker } from "../../utils/change-tracker.svelte";
 
 import { type Group, type Rule } from "../../types";
-import { defaultGroup, defaultRule } from "../../utils/defaults";
+import { defaultGroup, defaultRule, randomId } from "../../utils/defaults";
 import { overlay, toast } from "../../utils/events";
 import { fetcher } from "../../utils/fetcher";
 import { type SortDirection, type SortField } from "../../utils/rule-sorter";
@@ -347,7 +347,12 @@ export class GroupsStore {
     if (!forced.size) this.#forcedRuleIdsByGroup.delete(groupId);
   }
 
-  moveForcedRule(sourceGroupId: string, targetGroupId: string, ruleId: string) {
+  moveForcedRule(
+    sourceGroupId: string,
+    targetGroupId: string,
+    ruleId: string,
+    targetRuleId = ruleId,
+  ) {
     if (sourceGroupId === targetGroupId) return;
     const forced = this.#forcedRuleIdsByGroup.get(sourceGroupId);
     if (!forced?.has(ruleId)) return;
@@ -358,7 +363,7 @@ export class GroupsStore {
       targetForced = new Set<string>();
       this.#forcedRuleIdsByGroup.set(targetGroupId, targetForced);
     }
-    targetForced.add(ruleId);
+    targetForced.add(targetRuleId);
   }
 
   syncRuleDeletion(groupIndex: number, ruleIndex: number) {
@@ -990,7 +995,15 @@ export class GroupsStore {
     if (!movedRule) return;
 
     if (!isSameGroup) {
-      this.moveForcedRule(sourceGroup.id, targetGroup.id, movedRule.id);
+      const sourceId = movedRule.id;
+      // IDs may overlap across groups, but must stay unique within the target.
+      if (targetRules.some((rule) => rule.id === sourceId)) {
+        const targetIds = new Set(targetRules.map((rule) => rule.id));
+        do {
+          movedRule.id = randomId();
+        } while (targetIds.has(movedRule.id));
+      }
+      this.moveForcedRule(sourceGroup.id, targetGroup.id, sourceId, movedRule.id);
     }
 
     let anchorIndex =
