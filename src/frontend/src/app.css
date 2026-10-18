@@ -1,12 +1,12 @@
 :root {
-  --bg-light: #1d231f;
-  --bg-dark: #111814;
-  --bg-dark-extra: #0d130f;
-  --bg-medium: #171d19;
-  --bg-light-extra: #262d29;
+  --bg-light: #1b2323;
+  --bg-dark: #101817;
+  --bg-dark-extra: #0b1312;
+  --bg-medium: #151d1d;
+  --bg-light-extra: #252d2d;
   --text: #fff;
   --text-2: #aaaaaa;
-  --border-light: #282e2a;
+  --border-light: #262e2e;
   --violet: #9047fe;
   --violet-dark: #4933c2;
   --violet-light: #ae81ff;
@@ -35,7 +35,7 @@
   --font: "Overpass", Arial, Helvetica, sans-serif;
   --font-mono: Monaco, monospace;
 
-  --accent: #84c09d;
+  --accent: #72c1b6;
   --accent-light: color-mix(in srgb, var(--accent) 20%, transparent);
   --shadow-popover: 0px 0px 10px 1px var(--bg-dark-extra);
 }
