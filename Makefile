@@ -16,7 +16,9 @@ PKG_MAINTAINER := WeirdPhrog (fork); upstream: Vladimir Avtsenov
 # match it; the workflow validates this before building or publishing anything.
 PKG_VERSION ?= $(strip $(shell cat VERSION))
 PKG_VERSION_DISPLAY ?= $(PKG_VERSION)
-PKG_VERSION_APK := $(shell echo "$(PKG_VERSION)" | sed -E 's/~git([0-9]+)\.[^.]+$$/_pre\1/')
+# Optional manual WebUI marker: make PKG_VERSION_PRERELEASE=1.
+# This does not change the backend or package version.
+PKG_VERSION_PRERELEASE ?=
 PKG_REVISION ?= 1
 
 # Export variables for recursive make executions
@@ -110,22 +112,12 @@ BUILD_KEY_APK_PUB ?= public-key.pem
 # Targets
 #
 
-.PHONY: _return_export_dynamic_env all clear clean download download_backend download_frontend redownload redownload_backend redownload_frontend build build_backend build_frontend rebuild rebuild_backend rebuild_frontend prepare_files package package_ipk swagger FORCE
+.PHONY: all clear clean download download_backend download_frontend redownload redownload_backend redownload_frontend build build_backend build_frontend rebuild rebuild_backend rebuild_frontend prepare_files package package_ipk swagger FORCE
 
 all: download build package
 
 swagger:
 	cd ./src/backend && go run github.com/swaggo/swag/cmd/swag@v1.16.6 init --dir ./api --generalInfo doc.go --output ../../docs --outputTypes yaml
-
-_return_export_dynamic_env:
-	@bash -c 'printf "COMMIT=%q\n" "$(COMMIT)"'
-	@bash -c 'printf "COMMITS_SINCE_TAG=%q\n" "$(COMMITS_SINCE_TAG)"'
-	@bash -c 'printf "PKG_REVISION=%q\n" "$(PKG_REVISION)"'
-	@bash -c 'printf "PKG_VERSION=%q\n" "$(PKG_VERSION)"'
-	@bash -c 'printf "PKG_VERSION_DISPLAY=%q\n" "$(PKG_VERSION_DISPLAY)"'
-	@bash -c 'printf "PKG_VERSION_PRERELEASE=%q\n" "$(PKG_VERSION_PRERELEASE)"'
-	@bash -c 'printf "PRERELEASE_DATE=%q\n" "$(PRERELEASE_DATE)"'
-	@bash -c 'printf "TAG=%q\n" "$(TAG)"'
 
 clear:
 	rm -rf ./src/frontend/dist
@@ -296,7 +288,7 @@ package_apk: prepare_files $(BUILD_KEY_APK_SEC)
 
 	$(ROOT_WRAP) apk mkpkg \
 		-I "name:$(PKG_NAME)" \
-		-I "version:$(PKG_VERSION_APK)-r$(PKG_REVISION)" \
+		-I "version:$(PKG_VERSION)-r$(PKG_REVISION)" \
 		-I "description:$(PKG_DESCRIPTION)" \
 		-I "arch:$(TARGET)" \
 		-I "license:$(PKG_LICENSE)" \
@@ -309,7 +301,7 @@ package_apk: prepare_files $(BUILD_KEY_APK_SEC)
 		-s "pre-deinstall:$(APK_DIR)/pre-deinstall.sh" \
 		-s "post-upgrade:$(APK_DIR)/post-upgrade.sh" \
 		-F "$(ROOT_APK_DIR)" \
-		-o "$(BUILDS_DIR)/$(PKG_NAME)_$(PKG_VERSION_APK)-r$(PKG_REVISION)_$(UNIQUE_NAME).apk" \
+		-o "$(BUILDS_DIR)/$(PKG_NAME)_$(PKG_VERSION)-r$(PKG_REVISION)_$(UNIQUE_NAME).apk" \
 		--sign "$(BUILD_KEY_APK_SEC)"
 
 FORCE:

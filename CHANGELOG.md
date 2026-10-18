@@ -2,6 +2,13 @@
 
 История по версиям ведётся с перехода на `MAJOR.MINOR.PATCH`. Текущее поведение и отличия от исходного MagiTrickle описаны в [README](README.md#изменения-относительно-оригинала).
 
+## [Unreleased]
+
+### Изменено
+
+- В README добавлены команды восстановления `config.yaml` из выбранного архива и пояснение о потере изменений, сделанных после создания этой копии.
+- Из Makefile удалён неиспользуемый экспорт переменных старого CI и преобразование старого суффикса `~git` для APK. Существующая ручная пометка `PKG_VERSION_PRERELEASE=1` сохранена и описана отдельно от версии пакета.
+
 ## [1.0.2] — 2026-10-18
 
 ### Изменено
@@ -46,6 +53,7 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.2...develop
 [1.0.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2026.10.16.20...v1.0.0
