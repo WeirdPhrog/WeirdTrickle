@@ -476,7 +476,7 @@ func (h *Handler) saveIfRequested(w http.ResponseWriter, r *http.Request, defaul
 		return true
 	}
 	if err := h.app.SaveConfig(); err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+		utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("changes are applied, but failed to save config: %v", err))
 		return false
 	}
 	return true
