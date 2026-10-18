@@ -94,6 +94,10 @@ func TestPlanRefreshRetainsPreviousRulesOnEmptyOrUnsupportedResponse(t *testing.
 	if !strings.Contains(err.Error(), "bad entry") {
 		t.Fatal("invalid rule was not identified in the error")
 	}
+	_, _, err = PlanRefresh(existing, strings.Repeat("not a domain ", 1024))
+	if err == nil || len(err.Error()) > 512 || !strings.Contains(err.Error(), "not a domain") {
+		t.Fatal("invalid server content produced an unbounded or unhelpful diagnostic")
+	}
 }
 
 func TestRefreshRulesPreservesExistingOverrides(t *testing.T) {
