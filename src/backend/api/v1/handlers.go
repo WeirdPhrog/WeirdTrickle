@@ -252,7 +252,7 @@ func (h *Handler) PutGroup(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !h.updateGroup(w, updated) || !h.saveIfRequested(w, r, false) {
+	if !h.updateGroup(w, r, updated) || !h.saveIfRequested(w, r, false) {
 		return
 	}
 	utils.WriteJson(w, http.StatusOK, RespFromGroup(updated, true))
@@ -343,7 +343,7 @@ func (h *Handler) PutRules(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	updated.Rules = newRules
-	if !h.updateGroup(w, &updated) || !h.saveIfRequested(w, r, false) {
+	if !h.updateGroup(w, r, &updated) || !h.saveIfRequested(w, r, false) {
 		return
 	}
 	utils.WriteJson(w, http.StatusOK, RespFromRules(newRules))
@@ -377,7 +377,7 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated.Rules = append(append([]*models.Rule(nil), updated.Rules...), rule)
-	if !h.updateGroup(w, &updated) || !h.saveIfRequested(w, r, false) {
+	if !h.updateGroup(w, r, &updated) || !h.saveIfRequested(w, r, false) {
 		return
 	}
 	utils.WriteJson(w, http.StatusOK, RespFromRule(rule))
@@ -427,7 +427,7 @@ func (h *Handler) PutRule(w http.ResponseWriter, r *http.Request) {
 	rule := &models.Rule{ID: updated.Rules[idx].ID, Name: req.Name, Type: req.Type, Rule: req.Rule, Enable: req.Enable}
 	updated.Rules = append([]*models.Rule(nil), updated.Rules...)
 	updated.Rules[idx] = rule
-	if !h.updateGroup(w, &updated) || !h.saveIfRequested(w, r, false) {
+	if !h.updateGroup(w, r, &updated) || !h.saveIfRequested(w, r, false) {
 		return
 	}
 	utils.WriteJson(w, http.StatusOK, RespFromRule(rule))
@@ -450,17 +450,19 @@ func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	updated := *requestGroup(r)
 	idx, _ := strconv.Atoi(r.Header.Get("ruleIdx"))
 	updated.Rules = append(append([]*models.Rule(nil), updated.Rules[:idx]...), updated.Rules[idx+1:]...)
-	if !h.updateGroup(w, &updated) || !h.saveIfRequested(w, r, false) {
+	if !h.updateGroup(w, r, &updated) || !h.saveIfRequested(w, r, false) {
 		return
 	}
 	utils.WriteJson(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) updateGroup(w http.ResponseWriter, group *models.Group) bool {
-	if err := h.app.UpdateGroup(group); err != nil {
+func (h *Handler) updateGroup(w http.ResponseWriter, r *http.Request, group *models.Group) bool {
+	if err := h.app.UpdateGroupIfCurrent(group, requestGroup(r)); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, app.ErrGroupNotFound) {
 			status = http.StatusNotFound
+		} else if errors.Is(err, app.ErrGroupChanged) {
+			status = http.StatusConflict
 		}
 		utils.WriteError(w, status, err.Error())
 		return false

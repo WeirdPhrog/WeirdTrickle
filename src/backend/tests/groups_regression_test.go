@@ -3,10 +3,12 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"magitrickle"
 	"magitrickle/api/v1"
@@ -74,7 +76,7 @@ func TestConcurrentGroupAPIAndDNSMatching(t *testing.T) {
 				data := []byte(`{"type":"regex","rule":"^example\\.com$","enable":true}`)
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/groups/"+id.String()+"/rules/"+ruleID.String(), bytes.NewReader(data)))
-				if w.Code != http.StatusOK {
+				if w.Code != http.StatusOK && w.Code != http.StatusConflict {
 					t.Errorf("edit: %d %s", w.Code, w.Body.String())
 					return
 				}
@@ -87,4 +89,75 @@ func TestConcurrentGroupAPIAndDNSMatching(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+type pausedRuleBody struct {
+	io.Reader
+	entered chan<- struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (b *pausedRuleBody) Read(p []byte) (int, error) {
+	b.once.Do(func() { b.entered <- struct{}{}; <-b.release })
+	return b.Reader.Read(p)
+}
+
+func TestConcurrentRuleCreationRejectsStaleSnapshot(t *testing.T) {
+	a := &magitrickle.App{}
+	id := intID.ID{1}
+	if err := a.AddGroup(&models.Group{ID: id, Enable: true}); err != nil {
+		t.Fatal(err)
+	}
+	router := v1.NewRouter(a)
+	path := "/groups/" + id.String() + "/rules"
+	payloads := [][]byte{
+		[]byte(`{"type":"domain","rule":"one.example","enable":true}`),
+		[]byte(`{"type":"domain","rule":"two.example","enable":true}`),
+	}
+	entered, release := make(chan struct{}, 2), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	responses := make(chan struct{ index, code int }, 2)
+	for i, payload := range payloads {
+		go func() {
+			body := &pausedRuleBody{Reader: bytes.NewReader(payload), entered: entered, release: release}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, body))
+			responses <- struct{ index, code int }{i, w.Code}
+		}()
+	}
+	for range payloads {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("requests did not capture their initial snapshots")
+		}
+	}
+	unblock()
+	ok, conflict := 0, -1
+	for range payloads {
+		select {
+		case response := <-responses:
+			switch response.code {
+			case http.StatusOK:
+				ok++
+			case http.StatusConflict:
+				conflict = response.index
+			default:
+				t.Fatalf("unexpected status %d", response.code)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("concurrent edits did not complete")
+		}
+	}
+	if ok != 1 || conflict < 0 || len(a.UserGroups()[0].Model().Rules) != 1 {
+		t.Fatal("a concurrent edit was silently overwritten")
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, bytes.NewReader(payloads[conflict])))
+	if w.Code != http.StatusOK || len(a.UserGroups()[0].Model().Rules) != 2 {
+		t.Fatalf("retry did not preserve both rules: %d %s", w.Code, w.Body.String())
+	}
 }
