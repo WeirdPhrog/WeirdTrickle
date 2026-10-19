@@ -14,11 +14,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// This is a request: SO_RCVBUF is still capped by net.core.rmem_max.
+// Receive errors are handled by reconnecting and resynchronizing state.
+const netlinkReceiveBufferSize = 1 << 20
+
 func subscribeLinkUpdates() (chan netlink.LinkUpdate, chan struct{}, error) {
 	linkUpdateChannel := make(chan netlink.LinkUpdate, 64)
 	done := make(chan struct{})
 	if err := netlink.LinkSubscribeWithOptions(linkUpdateChannel, done, netlink.LinkSubscribeOptions{
-		ReceiveBufferSize: 1 << 20,
+		ReceiveBufferSize: netlinkReceiveBufferSize,
 		ErrorCallback: func(err error) {
 			select {
 			case <-done:
@@ -38,7 +42,7 @@ func subscribeAddrUpdates() (chan netlink.AddrUpdate, chan struct{}, error) {
 	addrUpdateChannel := make(chan netlink.AddrUpdate, 64)
 	done := make(chan struct{})
 	if err := netlink.AddrSubscribeWithOptions(addrUpdateChannel, done, netlink.AddrSubscribeOptions{
-		ReceiveBufferSize: 1 << 20,
+		ReceiveBufferSize: netlinkReceiveBufferSize,
 		ErrorCallback: func(err error) {
 			select {
 			case <-done:

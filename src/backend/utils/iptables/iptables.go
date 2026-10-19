@@ -228,13 +228,14 @@ func (ipt *IPTables) Commit() (err error) {
 	}()
 	// Re-read and recompile after contention: another process may have changed
 	// rules while we waited. Old Keenetic restore binaries do not support -w.
+	// Wait one and then two seconds to allow a longer NDM firewall rebuild.
 	for attempt := 0; attempt < 3; attempt++ {
 		buf.Reset()
 		err = ipt.commitAttempt(buf)
 		if err == nil || !isLockFailure(err) || attempt == 2 {
 			return err
 		}
-		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+		time.Sleep(time.Duration(attempt+1) * time.Second)
 	}
 	return err
 }
