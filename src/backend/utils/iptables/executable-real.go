@@ -2,9 +2,31 @@ package iptables
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 )
+
+type commandFailure struct {
+	command string
+	err     error
+	stderr  string
+}
+
+func (e *commandFailure) Error() string {
+	return fmt.Sprintf("%s failed: %v: %s", e.command, e.err, e.stderr)
+}
+func (e *commandFailure) Unwrap() error { return e.err }
+
+func isLockFailure(err error) bool {
+	var failure *commandFailure
+	if !errors.As(err, &failure) {
+		return false
+	}
+	message := strings.ToLower(failure.stderr)
+	return strings.Contains(message, "xtables lock") || strings.Contains(message, "xtables-lock") || strings.Contains(message, "resource temporarily unavailable")
+}
 
 type realIPTables struct {
 	saveCmd    string
@@ -40,10 +62,7 @@ func (ipt *realIPTables) Save() ([]byte, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf(
-			"iptables-save failed: %w: %s",
-			err, stderr.String(),
-		)
+		return nil, &commandFailure{ipt.saveCmd, err, stderr.String()}
 	}
 
 	return stdout.Bytes(), nil
@@ -57,10 +76,7 @@ func (ipt *realIPTables) Restore(data []byte) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf(
-			"iptables-restore failed: %w: %s",
-			err, stderr.String(),
-		)
+		return &commandFailure{ipt.restoreCmd, err, stderr.String()}
 	}
 
 	return nil

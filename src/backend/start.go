@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netlink/nl"
 )
 
 // Start запускает приложение (ядро)
@@ -87,34 +86,20 @@ func (a *App) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	linkUpdateChannel, linkUpdateDone, err := subscribeLinkUpdates()
-	if err != nil {
-		return err
-	}
-	defer close(linkUpdateDone)
-
-	addrUpdateChannel, addrUpdateDone, err := subscribeAddrUpdates()
-	if err != nil {
-		return err
-	}
-	defer close(addrUpdateDone)
+	links := &networkSubscription[netlink.LinkUpdate]{subscribe: subscribeLinkUpdates, name: "links"}
+	links.connect()
+	defer links.close()
+	addresses := &networkSubscription[netlink.AddrUpdate]{subscribe: subscribeAddrUpdates, name: "addresses"}
+	addresses.connect()
+	defer addresses.close()
 
 	errChan := make(chan error, 4)
 
-	var interfaceAddrs []netlink.Addr
-	for _, linkName := range a.Config().Link {
-		link, err := netlink.LinkByName(linkName)
-		if err != nil {
-			return fmt.Errorf("failed to find link %s: %w", linkName, err)
-		}
-		linkAddrList, err := netlink.AddrList(link, nl.FAMILY_ALL)
-		if err != nil {
-			return fmt.Errorf("failed to list address of interface %s: %w", linkName, err)
-		}
-		interfaceAddrs = append(interfaceAddrs, linkAddrList...)
-	}
-
 	if !a.Config().DNSProxy.DisableRemap53 {
+		interfaceAddrs, err := a.lanAddresses(false)
+		if err != nil {
+			return err
+		}
 		a.dnsOverrider = a.nfHelper.PortRemap("DNSOR", 53, a.Config().DNSProxy.Host.Port, interfaceAddrs)
 		if err := a.dnsOverrider.Enable(); err != nil {
 			return fmt.Errorf("failed to override DNS: %v", err)
@@ -164,18 +149,51 @@ func (a *App) Start(ctx context.Context) (err error) {
 
 	restoreTicker := time.NewTicker(time.Minute)
 	defer restoreTicker.Stop()
+	var networkRepair networkRetry
+	defer networkRepair.clear()
+	recordNetworkError := func(err error) {
+		if err != nil {
+			log.Error().Err(err).Msg("network state repair failed; retaining routing and retrying")
+			networkRepair.fail()
+		}
+	}
+	repairNetwork := func() {
+		if err := a.resyncNetworkState(); err != nil {
+			recordNetworkError(err)
+		} else {
+			networkRepair.clear()
+		}
+	}
 	for {
 		select {
-		case event, ok := <-linkUpdateChannel:
+		case event, ok := <-links.updates:
 			if !ok {
-				return fmt.Errorf("link update subscription closed")
+				links.lost()
+				continue
 			}
-			a.handleLink(event)
-		case event, ok := <-addrUpdateChannel:
+			links.retry.clear()
+			recordNetworkError(errors.Join(a.refreshDNSRemap(), a.handleLink(event)))
+		case event, ok := <-addresses.updates:
 			if !ok {
-				return fmt.Errorf("address update subscription closed")
+				addresses.lost()
+				continue
 			}
-			a.handleAddr(event)
+			addresses.retry.clear()
+			// Both additions and removals can change the router's DNS addresses.
+			recordNetworkError(errors.Join(a.refreshDNSRemap(), a.handleAddr(event)))
+		case <-links.retry.ready:
+			links.retry.fired()
+			if links.connect() {
+				repairNetwork()
+			}
+		case <-addresses.retry.ready:
+			addresses.retry.fired()
+			if addresses.connect() {
+				repairNetwork()
+			}
+		case <-networkRepair.ready:
+			networkRepair.fired()
+			repairNetwork()
 		case err := <-errChan:
 			return err
 		case <-restoreTicker.C:

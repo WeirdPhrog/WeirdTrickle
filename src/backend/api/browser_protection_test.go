@@ -16,8 +16,12 @@ type browserTestApp struct {
 	config models.AppConfig
 }
 
-func (a *browserTestApp) Config() models.AppConfig { return a.config }
-func (a *browserTestApp) SaveConfig() error        { a.saves++; return nil }
+func (a *browserTestApp) Config() models.AppConfig {
+	config := a.config
+	config.HTTPWeb.AllowedHosts = append([]string{"router.test"}, config.HTTPWeb.AllowedHosts...)
+	return config
+}
+func (a *browserTestApp) SaveConfig() error { a.saves++; return nil }
 
 func TestHTTPRejectsForeignBrowserRequests(t *testing.T) {
 	for _, tc := range []struct {

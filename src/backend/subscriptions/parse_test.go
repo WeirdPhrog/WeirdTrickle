@@ -91,12 +91,12 @@ func TestPlanRefreshRetainsPreviousRulesOnEmptyOrUnsupportedResponse(t *testing.
 		t.Fatalf("a normalized replacement failed: %+v, %v", refreshed, err)
 	}
 	_, _, err = PlanRefresh(existing, "bad entry")
-	if !strings.Contains(err.Error(), "bad entry") {
-		t.Fatal("invalid rule was not identified in the error")
+	if !strings.Contains(err.Error(), "rule 1") || strings.Contains(err.Error(), "bad entry") {
+		t.Fatal("invalid rule index missing or server response exposed")
 	}
 	_, _, err = PlanRefresh(existing, strings.Repeat("not a domain ", 1024))
-	if err == nil || len(err.Error()) > 512 || !strings.Contains(err.Error(), "not a domain") {
-		t.Fatal("invalid server content produced an unbounded or unhelpful diagnostic")
+	if err == nil || len(err.Error()) > 512 || strings.Contains(err.Error(), "not a domain") {
+		t.Fatal("invalid server content was exposed in the diagnostic")
 	}
 }
 

@@ -61,7 +61,7 @@ func TestSubscriptionSettingsAPI(t *testing.T) {
 	}
 }
 
-func TestSubscriptionPreviewUsesSharedFetch(t *testing.T) {
+func TestSubscriptionPreviewRejectsRouterLocalURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("example.com\n"))
 	}))
@@ -69,7 +69,7 @@ func TestSubscriptionPreviewUsesSharedFetch(t *testing.T) {
 	router := v1.NewRouter(&magitrickle.App{})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/subscriptions/rules?url="+server.URL, nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "example.com") {
+	if w.Code != 502 || strings.Contains(w.Body.String(), "example.com") || !strings.Contains(w.Body.String(), "not allowed") {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }

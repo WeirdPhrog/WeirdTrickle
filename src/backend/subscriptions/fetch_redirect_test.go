@@ -19,7 +19,7 @@ func TestFetchAllStandardRedirects(t *testing.T) {
 				http.Redirect(w, r, "/list", status)
 			}))
 			defer server.Close()
-			body, err := FetchList(server.URL)
+			body, err := fetchTestList(server.URL)
 			if err != nil || body != "example.com\n" {
 				t.Fatalf("redirect %d: body=%q err=%v", status, body, err)
 			}

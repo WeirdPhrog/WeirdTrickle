@@ -67,7 +67,7 @@ func TestFetchMissingInterfaceRetriesOriginalURL(t *testing.T) {
 		_, _ = w.Write([]byte("example.com\n"))
 	}))
 	defer server.Close()
-	list, err := FetchListWithInterface(context.Background(), server.URL+"/start", "mt-no-such-if")
+	list, err := fetchListWithPolicy(context.Background(), server.URL+"/start", "mt-no-such-if", func(string) error { return nil })
 	mu.Lock()
 	defer mu.Unlock()
 	if err != nil || list != "example.com\n" || !reflect.DeepEqual(paths, []string{"/start", "/list"}) {

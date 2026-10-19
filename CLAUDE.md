@@ -57,6 +57,7 @@ The root package (`src/backend/*.go`) contains the `App` struct — the central 
 - **`app.go`** — `App` struct and CRUD methods for groups and subscriptions
 - **`config.go`** — validates YAML and schema compatibility before applying it; failed loads prevent startup and saving over the original file; saves use a temporary file and atomic rename
 - **`start.go`** — `App.Start()`: wires up DNS MITM proxy, iptables helper, HTTP/Unix API servers, and the netlink watcher
+- **`network_subscription.go`**, **`netlink.go`** — reconnect closed netlink subscriptions with bounded backoff, reconcile current routes and refresh LAN DNS destinations without stopping the daemon or releasing failed rollbacks
 - **`dns.go`**, **`dns_snapshot.go`** — DNS hooks and a conservative prefilter; matching addresses must be routed before returning a usable answer, including pending subscription rules without `Spec.Model`
 - **`rule_set.go`** — `RuleSet` wraps a group spec with ipset + iptables lifecycle (Enable/Disable/Sync)
 - **`routing_restore.go`** — immutable rollback-error snapshots, recovery backoff (1–15 minutes) and runtime status; healthy maintenance checks an atomic flag before locking. `/api/v1/system/routing` and WebUI expose pending rollback recovery, not general VPN health.
@@ -91,6 +92,10 @@ Key sub-packages:
 Subscriptions are evaluated first, then Groups set the final routing priority. Preserve this ordering for IPv4/IPv6 and after updates or firewall reconstruction. Rule updates prepare replacement sets before publishing them; interface changes keep a blackhole route during the transition. DNS addresses that match a rule but cannot be installed produce SERVFAIL. These mechanisms do not cover client DNS that bypasses the proxy or traffic without a matching rule.
 
 Subscription fetching has a separate shared interface setting, `app.subscriptionFetchInterface`. If that interface fails, fetching retries through the system route. This fallback is intentional and does not change the traffic-routing interface selected inside each group/subscription.
+
+The downloader checks resolved socket destinations before connecting, including redirects: router-owned, loopback and special-service addresses are blocked; separate LAN servers remain supported. Environment HTTP proxies are disabled so they cannot bypass the check. Network errors retain their underlying cause for errors.Is/As but never expose URLs or upstream response text through Error(). Application unit tests inject a local fixture fetcher; public production entry points always use the protected downloader.
+
+HTTP Host validation allows local addresses/localhost and explicitly configured `app.httpWeb.allowedHosts`; custom reverse proxy names must be listed. Unix-socket hooks retain their existing separate access path. Config reload holds locks in subscriptionSyncMu -> configFileMu -> stateMu order, prepares subscriptions before removing groups, retains all pending DNS rules through nested reconciliation, and publishes the new config snapshot only after success. Startup-only network changes require restart; failed reloads preserve the manual file until a successful reload clears the save guard.
 
 ### Rule types
 

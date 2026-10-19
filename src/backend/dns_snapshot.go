@@ -12,6 +12,16 @@ type dnsRuleSnapshot struct {
 	rules []*models.Rule
 }
 
+func (a *App) beginConfigDNSRulesLocked(pending []rulesets.Spec) {
+	a.configDNSRules = append([]rulesets.Spec(nil), pending...)
+	// A first stage can commit before a later stage fails. Keep old domains too,
+	// so answers cannot bypass the lock before those old rules are rolled back.
+	for _, current := range a.ruleSetSnapshotLocked() {
+		a.configDNSRules = append(a.configDNSRules, rulesets.Spec{Model: current.Model()})
+	}
+	a.publishDNSRulesLocked(nil)
+}
+
 func (a *App) dnsRuleSetSnapshot(names []string) []*RuleSet {
 	if a.stateMu.TryRLock() {
 		defer a.stateMu.RUnlock()
@@ -59,6 +69,9 @@ func (a *App) publishDNSRulesLocked(pending []rulesets.Spec) {
 		appendGroup(group.Model())
 	}
 	for _, spec := range pending {
+		appendGroup(modelFromSpec(spec))
+	}
+	for _, spec := range a.configDNSRules {
 		appendGroup(modelFromSpec(spec))
 	}
 	a.dnsRules.Store(snapshot)

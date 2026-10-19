@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,10 @@ func FetchListContext(ctx context.Context, rawURL string) (string, error) {
 // FetchListWithInterface retries the original URL via the system route if the
 // preferred interface fails. A failed attempt never returns a partial list.
 func FetchListWithInterface(ctx context.Context, rawURL, interfaceName string) (string, error) {
+	return fetchListWithPolicy(ctx, rawURL, interfaceName, checkFetchAddress)
+}
+
+func fetchListWithPolicy(ctx context.Context, rawURL, interfaceName string, check fetchAddressPolicy) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("invalid url")
@@ -35,14 +40,18 @@ func FetchListWithInterface(ctx context.Context, rawURL, interfaceName string) (
 		return "", err
 	}
 	return fetchWithFallback(ctx, interfaceName, func(ctx context.Context, name string) (string, error) {
-		return fetchListAttempt(ctx, rawURL, name)
+		return fetchListAttemptWithPolicy(ctx, rawURL, name, check)
 	})
 }
 
 func fetchListAttempt(ctx context.Context, rawURL, interfaceName string) (string, error) {
+	return fetchListAttemptWithPolicy(ctx, rawURL, interfaceName, checkFetchAddress)
+}
+
+func fetchListAttemptWithPolicy(ctx context.Context, rawURL, interfaceName string, check fetchAddressPolicy) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	transport, err := fetchTransport(interfaceName)
+	transport, err := fetchTransport(interfaceName, check)
 	if err != nil {
 		return "", err
 	}
@@ -60,18 +69,26 @@ func fetchListAttempt(ctx context.Context, rawURL, interfaceName string) (string
 	for redirects := 0; ; redirects++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 		if err != nil {
-			return "", err
+			return "", &fetchError{"invalid subscription request", err}
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return "", err
+			message := "subscription network request failed"
+			if errors.Is(err, errForbiddenFetchAddress) {
+				message = errForbiddenFetchAddress.Error()
+			} else if errors.Is(err, context.Canceled) {
+				message = "subscription download canceled"
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				message = "subscription download timed out"
+			}
+			return "", &fetchError{message, err}
 		}
 
 		if resp.StatusCode == http.StatusMovedPermanently || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
 			location, err := resp.Location()
 			resp.Body.Close()
 			if err != nil {
-				return "", fmt.Errorf("bad redirect location: %w", err)
+				return "", &fetchError{"invalid subscription redirect", err}
 			}
 			if !location.IsAbs() {
 				location = parsed.ResolveReference(location)
@@ -100,7 +117,7 @@ func fetchListAttempt(ctx context.Context, rawURL, interfaceName string) (string
 		}
 		data, err := io.ReadAll(io.LimitReader(resp.Body, maxListBytes+1))
 		if err != nil {
-			return "", err
+			return "", &fetchError{"failed to read subscription response", err}
 		}
 		if len(data) > maxListBytes {
 			return "", fmt.Errorf("subscription exceeds 16 MiB limit")
