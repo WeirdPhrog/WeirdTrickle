@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -14,32 +15,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type IPv4Subnet struct {
-	Address [4]byte
-	CIDR    uint8
-}
-
-func (subnet IPv4Subnet) String() string {
-	if subnet.CIDR == 0 {
-		return fmt.Sprintf("%d.%d.%d.%d", subnet.Address[0], subnet.Address[1], subnet.Address[2], subnet.Address[3])
-	} else {
-		return fmt.Sprintf("%d.%d.%d.%d/%d", subnet.Address[0], subnet.Address[1], subnet.Address[2], subnet.Address[3], subnet.CIDR)
-	}
-}
-
-type IPv6Subnet struct {
-	Address [16]byte
-	CIDR    uint8
-}
-
-func (subnet IPv6Subnet) String() string {
-	if subnet.CIDR == 0 {
-		return net.IP(subnet.Address[:]).String()
-	} else {
-		return fmt.Sprintf("%s/%d", net.IP(subnet.Address[:]), subnet.CIDR)
-	}
-}
-
 type IPSetTimeout *uint32
 
 var zeroTimeout = IPSetTimeout(new(uint32))
@@ -49,74 +24,55 @@ type IPSet struct {
 	locker  sync.Mutex
 
 	ipsetName string
-	deadlines map[string]time.Time
+	deadlines map[netip.Prefix]time.Time
 	nextSweep time.Time
 }
 
-func (r *IPSet) longerTimeout(key string, timeout IPSetTimeout) bool {
+// setName selects the kernel set by address family. A 16-byte address,
+// including an IPv4-mapped one, belongs to the IPv6 set.
+func (r *IPSet) setName(prefix netip.Prefix) string {
+	if prefix.Addr().Is4() {
+		return r.ipsetName + "_4"
+	}
+	return r.ipsetName + "_6"
+}
+
+func ipsetEntry(prefix netip.Prefix, timeout IPSetTimeout) *netlink.IPSetEntry {
+	return &netlink.IPSetEntry{IP: prefix.Addr().AsSlice(), CIDR: uint8(prefix.Bits()), Timeout: timeout}
+}
+
+func (r *IPSet) longerTimeout(prefix netip.Prefix, timeout IPSetTimeout) bool {
 	now := time.Now()
 	if !now.Before(r.nextSweep) {
-		for key, deadline := range r.deadlines {
+		for prefix, deadline := range r.deadlines {
 			if !now.Before(deadline) {
-				delete(r.deadlines, key)
+				delete(r.deadlines, prefix)
 			}
 		}
 		r.nextSweep = now.Add(time.Minute)
 	}
-	return timeout != nil && *timeout != 0 && r.deadlines[key].After(now.Add(time.Duration(*timeout)*time.Second))
+	return timeout != nil && *timeout != 0 && r.deadlines[prefix].After(now.Add(time.Duration(*timeout)*time.Second))
 }
 
-func (r *IPSet) rememberTimeout(key string, timeout IPSetTimeout, addedAt time.Time) {
+func (r *IPSet) rememberTimeout(prefix netip.Prefix, timeout IPSetTimeout, addedAt time.Time) {
 	if timeout == nil || *timeout == 0 {
-		delete(r.deadlines, key)
+		delete(r.deadlines, prefix)
 		return
 	}
 	if r.deadlines == nil {
-		r.deadlines = make(map[string]time.Time)
+		r.deadlines = make(map[netip.Prefix]time.Time)
 	}
-	r.deadlines[key] = addedAt.Add(time.Duration(*timeout) * time.Second)
+	r.deadlines[prefix] = addedAt.Add(time.Duration(*timeout) * time.Second)
 }
 
-func (r *IPSet) AddIPv4Subnet(subnet IPv4Subnet, timeout IPSetTimeout) error {
+func (r *IPSet) Add(prefix netip.Prefix, timeout IPSetTimeout) error {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 
 	if !r.enabled.Load() {
 		return nil
 	}
-	key := subnet.String()
-	if r.longerTimeout(key, timeout) {
-		return nil
-	}
-
-	if timeout == nil {
-		timeout = zeroTimeout
-	}
-
-	addedAt := time.Now()
-	err := netlink.IpsetAdd(r.ipsetName+"_4", &netlink.IPSetEntry{
-		IP:      subnet.Address[:],
-		CIDR:    subnet.CIDR,
-		Timeout: timeout,
-		Replace: true,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to add address: %w", err)
-	}
-
-	r.rememberTimeout(key, timeout, addedAt)
-	return nil
-}
-
-func (r *IPSet) AddIPv6Subnet(subnet IPv6Subnet, timeout IPSetTimeout) error {
-	r.locker.Lock()
-	defer r.locker.Unlock()
-
-	if !r.enabled.Load() {
-		return nil
-	}
-	key := subnet.String()
-	if r.longerTimeout(key, timeout) {
+	if r.longerTimeout(prefix, timeout) {
 		return nil
 	}
 
@@ -125,21 +81,17 @@ func (r *IPSet) AddIPv6Subnet(subnet IPv6Subnet, timeout IPSetTimeout) error {
 	}
 
 	addedAt := time.Now()
-	err := netlink.IpsetAdd(r.ipsetName+"_6", &netlink.IPSetEntry{
-		IP:      subnet.Address[:],
-		CIDR:    subnet.CIDR,
-		Timeout: timeout,
-		Replace: true,
-	})
-	if err != nil {
+	entry := ipsetEntry(prefix, timeout)
+	entry.Replace = true
+	if err := netlink.IpsetAdd(r.setName(prefix), entry); err != nil {
 		return fmt.Errorf("failed to add address: %w", err)
 	}
 
-	r.rememberTimeout(key, timeout, addedAt)
+	r.rememberTimeout(prefix, timeout, addedAt)
 	return nil
 }
 
-func (r *IPSet) DelIPv4Subnet(subnet IPv4Subnet) error {
+func (r *IPSet) Del(prefix netip.Prefix) error {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 
@@ -147,39 +99,17 @@ func (r *IPSet) DelIPv4Subnet(subnet IPv4Subnet) error {
 		return nil
 	}
 
-	err := netlink.IpsetDel(r.ipsetName+"_4", &netlink.IPSetEntry{
-		IP:   subnet.Address[:],
-		CIDR: subnet.CIDR,
-	})
+	err := netlink.IpsetDel(r.setName(prefix), ipsetEntry(prefix, nil))
 	if err != nil && !errors.Is(err, nl.IPSetError(nl.IPSET_ERR_EXIST)) {
 		return fmt.Errorf("failed to delete address: %w", err)
 	}
 
-	delete(r.deadlines, subnet.String())
+	delete(r.deadlines, prefix)
 	return nil
 }
 
-func (r *IPSet) DelIPv6Subnet(subnet IPv6Subnet) error {
-	r.locker.Lock()
-	defer r.locker.Unlock()
-
-	if !r.enabled.Load() {
-		return nil
-	}
-
-	err := netlink.IpsetDel(r.ipsetName+"_6", &netlink.IPSetEntry{
-		IP:   subnet.Address[:],
-		CIDR: subnet.CIDR,
-	})
-	if err != nil && !errors.Is(err, nl.IPSetError(nl.IPSET_ERR_EXIST)) {
-		return fmt.Errorf("failed to delete address: %w", err)
-	}
-
-	delete(r.deadlines, subnet.String())
-	return nil
-}
-
-func (r *IPSet) ListIPv4Subnets() (map[IPv4Subnet]IPSetTimeout, error) {
+// List returns the entries of both address families.
+func (r *IPSet) List() (map[netip.Prefix]IPSetTimeout, error) {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 
@@ -187,56 +117,30 @@ func (r *IPSet) ListIPv4Subnets() (map[IPv4Subnet]IPSetTimeout, error) {
 		return nil, nil
 	}
 
-	addresses := make(map[IPv4Subnet]IPSetTimeout)
-
-	list, err := netlink.IpsetList(r.ipsetName + "_4")
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range list.Entries {
-		if len(entry.IP) != net.IPv4len {
-			continue
+	addresses := make(map[netip.Prefix]IPSetTimeout)
+	for _, family := range []struct {
+		suffix string
+		length int
+	}{{"_4", net.IPv4len}, {"_6", net.IPv6len}} {
+		list, err := netlink.IpsetList(r.ipsetName + family.suffix)
+		if err != nil {
+			return nil, err
 		}
-		subnet := IPv4Subnet{
-			Address: [4]byte(entry.IP),
-			CIDR:    entry.CIDR,
-		}
-		if entry.Timeout != nil && *entry.Timeout == 0 {
-			addresses[subnet] = nil
-		} else {
-			addresses[subnet] = entry.Timeout
-		}
-	}
-
-	return addresses, nil
-}
-
-func (r *IPSet) ListIPv6Subnets() (map[IPv6Subnet]IPSetTimeout, error) {
-	r.locker.Lock()
-	defer r.locker.Unlock()
-
-	if !r.enabled.Load() {
-		return nil, nil
-	}
-
-	addresses := make(map[IPv6Subnet]IPSetTimeout)
-
-	list, err := netlink.IpsetList(r.ipsetName + "_6")
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range list.Entries {
-		if len(entry.IP) != net.IPv6len {
-			continue
-		}
-		subnet := IPv6Subnet{
-			Address: [16]byte(entry.IP),
-			CIDR:    entry.CIDR,
-		}
-		if entry.Timeout != nil && *entry.Timeout == 0 {
-			addresses[subnet] = nil
-		} else {
-			addresses[subnet] = entry.Timeout
+		for _, entry := range list.Entries {
+			if len(entry.IP) != family.length {
+				continue
+			}
+			addr, _ := netip.AddrFromSlice(entry.IP)
+			bits := int(entry.CIDR)
+			if bits == 0 {
+				bits = addr.BitLen() // CIDR 0 has always denoted a host entry.
+			}
+			prefix := netip.PrefixFrom(addr, bits)
+			if entry.Timeout != nil && *entry.Timeout == 0 {
+				addresses[prefix] = nil
+			} else {
+				addresses[prefix] = entry.Timeout
+			}
 		}
 	}
 
@@ -245,11 +149,20 @@ func (r *IPSet) ListIPv6Subnets() (map[IPv6Subnet]IPSetTimeout, error) {
 
 // Replace prepares both families before publishing either. An invalid entry or
 // a full set must leave the live routing set intact, not partially emptied.
-func (r *IPSet) Replace(v4 map[IPv4Subnet]IPSetTimeout, v6 map[IPv6Subnet]IPSetTimeout) error {
+func (r *IPSet) Replace(entries map[netip.Prefix]IPSetTimeout) error {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 	if !r.enabled.Load() {
 		return fmt.Errorf("ipset is disabled")
+	}
+	count4 := 0
+	for prefix := range entries {
+		if !prefix.IsValid() {
+			return fmt.Errorf("invalid routing prefix %s", prefix)
+		}
+		if prefix.Addr().Is4() {
+			count4++
+		}
 	}
 	tmp4, tmp6 := r.ipsetName+"_t4", r.ipsetName+"_t6"
 	preparedAt := time.Now()
@@ -269,26 +182,22 @@ func (r *IPSet) Replace(v4 map[IPv4Subnet]IPSetTimeout, v6 map[IPv6Subnet]IPSetT
 			MaxElements: uint32(max(65536, count+count/4)),
 		})
 	}
-	if err := create(tmp4, unix.AF_INET, len(v4)); err != nil {
+	if err := create(tmp4, unix.AF_INET, count4); err != nil {
 		return err
 	}
-	if err := create(tmp6, unix.AF_INET6, len(v6)); err != nil {
+	if err := create(tmp6, unix.AF_INET6, len(entries)-count4); err != nil {
 		return err
 	}
-	for subnet, ttl := range v4 {
+	for prefix, ttl := range entries {
 		if ttl == nil {
 			ttl = zeroTimeout
 		}
-		if err := netlink.IpsetAdd(tmp4, &netlink.IPSetEntry{IP: subnet.Address[:], CIDR: subnet.CIDR, Timeout: ttl}); err != nil {
-			return fmt.Errorf("prepare IPv4 set: %w", err)
+		name, family := tmp6, "IPv6"
+		if prefix.Addr().Is4() {
+			name, family = tmp4, "IPv4"
 		}
-	}
-	for subnet, ttl := range v6 {
-		if ttl == nil {
-			ttl = zeroTimeout
-		}
-		if err := netlink.IpsetAdd(tmp6, &netlink.IPSetEntry{IP: subnet.Address[:], CIDR: subnet.CIDR, Timeout: ttl}); err != nil {
-			return fmt.Errorf("prepare IPv6 set: %w", err)
+		if err := netlink.IpsetAdd(name, ipsetEntry(prefix, ttl)); err != nil {
+			return fmt.Errorf("prepare %s set: %w", family, err)
 		}
 	}
 	if err := netlink.IpsetSwap(tmp4, r.ipsetName+"_4"); err != nil {
@@ -297,15 +206,10 @@ func (r *IPSet) Replace(v4 map[IPv4Subnet]IPSetTimeout, v6 map[IPv6Subnet]IPSetT
 	if err := netlink.IpsetSwap(tmp6, r.ipsetName+"_6"); err != nil {
 		return errors.Join(err, netlink.IpsetSwap(tmp4, r.ipsetName+"_4"))
 	}
-	r.deadlines = make(map[string]time.Time)
-	for subnet, ttl := range v4 {
+	r.deadlines = make(map[netip.Prefix]time.Time)
+	for prefix, ttl := range entries {
 		if ttl != nil && *ttl != 0 {
-			r.deadlines[subnet.String()] = preparedAt.Add(time.Duration(*ttl) * time.Second)
-		}
-	}
-	for subnet, ttl := range v6 {
-		if ttl != nil && *ttl != 0 {
-			r.deadlines[subnet.String()] = preparedAt.Add(time.Duration(*ttl) * time.Second)
+			r.deadlines[prefix] = preparedAt.Add(time.Duration(*ttl) * time.Second)
 		}
 	}
 	return nil

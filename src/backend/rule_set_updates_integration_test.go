@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
@@ -214,7 +215,10 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	}
 	assertEgress("mtother")
 	// A bad replacement must preserve both old address families.
-	if err := g.ipset.Replace(map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout{{Address: [4]byte{198, 18, 0, 1}, CIDR: 32}: nil}, map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout{{CIDR: 255}: nil}); err == nil {
+	if err := g.ipset.Replace(map[netip.Prefix]netfilterTools.IPSetTimeout{
+		netip.MustParsePrefix("198.18.0.1/32"):         nil,
+		netip.PrefixFrom(netip.IPv6Unspecified(), 255): nil,
+	}); err == nil {
 		t.Fatal("invalid replacement unexpectedly succeeded")
 	}
 	assertEgress("mtother")

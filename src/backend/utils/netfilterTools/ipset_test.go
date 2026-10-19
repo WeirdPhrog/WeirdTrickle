@@ -1,23 +1,32 @@
 package netfilterTools
 
 import (
-	"net"
+	"net/netip"
 	"testing"
 )
 
-func TestIPv6SubnetString(t *testing.T) {
-	for _, test := range []struct {
-		address string
-		cidr    uint8
-		want    string
-	}{
-		{"2001:db8::1234", 128, "2001:db8::1234/128"},
-		{"2001:db8::", 32, "2001:db8::/32"},
-		{"::1", 0, "::1"},
+func TestIPSetFamilySelection(t *testing.T) {
+	set := &IPSet{ipsetName: "mt_x"}
+	for prefix, want := range map[string]string{
+		"192.0.2.0/24":         "mt_x_4",
+		"2001:db8::1/128":      "mt_x_6",
+		"::ffff:192.0.2.1/128": "mt_x_6",
 	} {
-		subnet := IPv6Subnet{Address: [16]byte(net.ParseIP(test.address).To16()), CIDR: test.cidr}
-		if got := subnet.String(); got != test.want {
-			t.Errorf("IPv6 subnet = %q, want %q", got, test.want)
+		if got := set.setName(netip.MustParsePrefix(prefix)); got != want {
+			t.Errorf("%s: set %q, want %q", prefix, got, want)
+		}
+	}
+}
+
+func TestIPSetEntryKeepsAddressLength(t *testing.T) {
+	for prefix, length := range map[string]int{
+		"192.0.2.0/24":         4,
+		"2001:db8::/32":        16,
+		"::ffff:192.0.2.1/128": 16,
+	} {
+		entry := ipsetEntry(netip.MustParsePrefix(prefix), nil)
+		if len(entry.IP) != length || int(entry.CIDR) != netip.MustParsePrefix(prefix).Bits() {
+			t.Errorf("%s: entry %v/%d", prefix, entry.IP, entry.CIDR)
 		}
 	}
 }

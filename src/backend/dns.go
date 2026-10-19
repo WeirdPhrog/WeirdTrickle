@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"time"
-
-	"magitrickle/utils/netfilterTools"
 
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog/log"
@@ -333,10 +332,11 @@ func (g *RuleSet) addDNSAddress(names []string, ip net.IP, ttl uint32) (bool, er
 				if g.ipset == nil || g.ipsetToLink == nil {
 					return true, fmt.Errorf("routing is not ready")
 				}
-				if len(ip) == net.IPv4len {
-					return true, g.addIPv4Subnet(netfilterTools.IPv4Subnet{Address: [4]byte(ip), CIDR: 32}, &ttl)
+				addr, ok := netip.AddrFromSlice(ip)
+				if !ok {
+					return true, fmt.Errorf("invalid address %s", ip)
 				}
-				return true, g.addIPv6Subnet(netfilterTools.IPv6Subnet{Address: [16]byte(ip), CIDR: 128}, &ttl)
+				return true, g.addSubnet(netip.PrefixFrom(addr, addr.BitLen()), &ttl)
 			}
 		}
 	}

@@ -4,6 +4,7 @@ package magitrickle
 
 import (
 	"net"
+	"net/netip"
 	"testing"
 
 	"magitrickle/constant"
@@ -44,18 +45,16 @@ func TestRealRuleSetSync(t *testing.T) {
 	check(a.AddGroup(model))
 	g := a.userRuleSets[0]
 	defer g.Disable()
-	host4 := netfilterTools.IPv4Subnet{Address: [4]byte(ip4), CIDR: 32}
-	host6 := netfilterTools.IPv6Subnet{Address: [16]byte(ip6), CIDR: 128}
+	host4 := netip.PrefixFrom(netip.AddrFrom4([4]byte(ip4)), 32)
+	host6 := netip.PrefixFrom(netip.AddrFrom16([16]byte(ip6)), 128)
 	assertHosts := func(permanent bool) {
 		t.Helper()
-		v4, err := g.ListIPv4Subnets()
+		subnets, err := g.ListSubnets()
 		check(err)
-		v6, err := g.ListIPv6Subnets()
-		check(err)
-		ttl4, ok4 := v4[host4]
-		ttl6, ok6 := v6[host6]
+		ttl4, ok4 := subnets[host4]
+		ttl6, ok6 := subnets[host6]
 		if !ok4 || !ok6 {
-			t.Fatalf("DNS host lost: IPv4=%v IPv6=%v", v4, v6)
+			t.Fatalf("DNS host lost: %v", subnets)
 		}
 		if (ttl4 == nil) != permanent || (ttl6 == nil) != permanent {
 			t.Fatal("incorrect static/dynamic host timeout")
@@ -69,8 +68,8 @@ func TestRealRuleSetSync(t *testing.T) {
 	static.Rules = append(append([]*models.Rule(nil), model.Rules...), &models.Rule{ID: intID.ID{3}, Type: models.RuleTypeSubnet, Rule: "192.0.2.1/32", Enable: true}, &models.Rule{ID: intID.ID{4}, Type: models.RuleTypeSubnet6, Rule: "2001:db8::1/128", Enable: true})
 	check(a.UpdateGroup(&static))
 	ttl := uint32(30)
-	check(g.AddIPv4Subnet(host4, &ttl))
-	check(g.AddIPv6Subnet(host6, &ttl))
+	check(g.AddSubnet(host4, &ttl))
+	check(g.AddSubnet(host6, &ttl))
 	assertHosts(true)
 	check(a.UpdateGroup(model))
 	assertHosts(false)
@@ -85,8 +84,8 @@ func TestRealRuleSetSync(t *testing.T) {
 	// Raw zero and oversized DNS TTLs must remain finite in real ipsets.
 	a.config.Netfilter.IPSet.AdditionalTTL = 0
 	for _, ttl := range []uint32{0, ^uint32(0)} {
-		check(g.DelIPv4Subnet(host4))
-		check(g.DelIPv6Subnet(host6))
+		check(g.DelSubnet(host4))
+		check(g.DelSubnet(host6))
 		a.processARecord(dns.A{Hdr: dns.RR_Header{Name: "example.com.", Ttl: ttl}, A: ip4}, "test", "", "udp")
 		a.processAAAARecord(dns.AAAA{Hdr: dns.RR_Header{Name: "example.com.", Ttl: ttl}, AAAA: ip6}, "test", "", "udp")
 		assertHosts(false)

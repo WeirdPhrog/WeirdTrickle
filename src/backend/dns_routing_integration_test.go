@@ -55,15 +55,13 @@ func TestRealRuleSetSyncDNSBindings(t *testing.T) {
 	}
 	assertSets := func() {
 		t.Helper()
-		v4, err := g.ListIPv4Subnets()
+		subnets, err := g.ListSubnets()
 		check(err)
-		v6, err := g.ListIPv6Subnets()
-		check(err)
-		if len(v4) != 2 || len(v6) != 1 {
-			t.Fatalf("hints/additional addresses missing from kernel: %v %v", v4, v6)
+		if v4, v6 := countFamilies(subnets); v4 != 2 || v6 != 1 {
+			t.Fatalf("hints/additional addresses missing from kernel: %v", subnets)
 		}
-		for _, ttl := range v4 {
-			if ttl == nil || *ttl < 100 {
+		for prefix, ttl := range subnets {
+			if prefix.Addr().Is4() && (ttl == nil || *ttl < 100) {
 				t.Fatalf("short DNS answer reduced existing timeout: %v", ttl)
 			}
 		}

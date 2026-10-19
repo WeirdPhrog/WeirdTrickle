@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,12 +24,11 @@ type RuleSet struct {
 	enabled atomic.Bool
 	locker  sync.Mutex
 
-	app           *App
-	ipset         *netfilterTools.IPSet
-	ipsetToLink   *netfilterTools.IPSetToLink
-	permanentIPv4 map[netfilterTools.IPv4Subnet]bool
-	permanentIPv6 map[netfilterTools.IPv6Subnet]bool
-	restoreState  atomic.Pointer[routingRestoreState]
+	app          *App
+	ipset        *netfilterTools.IPSet
+	ipsetToLink  *netfilterTools.IPSetToLink
+	permanent    map[netip.Prefix]bool
+	restoreState atomic.Pointer[routingRestoreState]
 }
 
 type ruleSetModel struct {
@@ -194,24 +194,11 @@ func sameRules(a, b []*models.Rule) bool {
 	return true
 }
 
-func (g *RuleSet) addIPv4Subnet(subnet netfilterTools.IPv4Subnet, ttl netfilterTools.IPSetTimeout) error {
-	if subnet.CIDR == 0 {
-		subnet.CIDR = 32
-	}
-	if g.permanentIPv4[subnet] {
+func (g *RuleSet) addSubnet(prefix netip.Prefix, ttl netfilterTools.IPSetTimeout) error {
+	if g.permanent[prefix] {
 		ttl = nil
 	}
-	return g.ipset.AddIPv4Subnet(subnet, ttl)
-}
-
-func (g *RuleSet) addIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterTools.IPSetTimeout) error {
-	if subnet.CIDR == 0 {
-		subnet.CIDR = 128
-	}
-	if g.permanentIPv6[subnet] {
-		ttl = nil
-	}
-	return g.ipset.AddIPv6Subnet(subnet, ttl)
+	return g.ipset.Add(prefix, ttl)
 }
 
 func (g *RuleSet) enable() error {
@@ -289,101 +276,16 @@ func (g *RuleSet) sync() error {
 
 func (g *RuleSet) syncRules(rules []*models.Rule, retainOld bool) error {
 	now := time.Now()
-	newIPv4SubnetList := make(map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout)
-	newIPv6SubnetList := make(map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout)
+	next := make(map[netip.Prefix]netfilterTools.IPSetTimeout)
 	knownDomains := g.app.recordsCache.ListKnownDomains()
 	for _, domain := range rules {
 		if !domain.IsEnabled() {
 			continue
 		}
 		switch domain.Type {
-		case models.RuleTypeSubnet:
-			ip, ipNet, err := net.ParseCIDR(domain.Rule)
-			if err != nil {
-				ip = net.ParseIP(domain.Rule)
-				if ip == nil {
-					continue
-				}
-
-				ip = ip.To4()
-				if ip == nil {
-					continue
-				}
-
-				ipNet = &net.IPNet{
-					IP:   ip,
-					Mask: net.CIDRMask(32, 32),
-				}
-			}
-
-			ones, bits := ipNet.Mask.Size()
-			if bits != 32 || ones > 32 {
-				continue
-			}
-
-			var addr [4]byte
-			copy(addr[:], ipNet.IP.Mask(ipNet.Mask).To4())
-			cidr := uint8(ones)
-
-			if addr == ([4]byte{}) && cidr == 0 {
-				// TODO: Fix (remove dirty hack) after resolving https://github.com/vishvananda/netlink/issues/1091
-				newIPv4SubnetList[netfilterTools.IPv4Subnet{
-					Address: [4]byte{0x00},
-					CIDR:    1,
-				}] = nil
-				newIPv4SubnetList[netfilterTools.IPv4Subnet{
-					Address: [4]byte{0x80},
-					CIDR:    1,
-				}] = nil
-			} else {
-				newIPv4SubnetList[netfilterTools.IPv4Subnet{
-					Address: addr,
-					CIDR:    cidr,
-				}] = nil
-			}
-
-		case models.RuleTypeSubnet6:
-			ip, ipNet, err := net.ParseCIDR(domain.Rule)
-			if err != nil {
-				ip = net.ParseIP(domain.Rule)
-				if ip == nil {
-					continue
-				}
-
-				ip = ip.To16()
-				if ip == nil {
-					continue
-				}
-
-				ipNet = &net.IPNet{
-					IP:   ip,
-					Mask: net.CIDRMask(128, 128),
-				}
-			}
-
-			ones, bits := ipNet.Mask.Size()
-			if bits != 128 || ones > 128 {
-				continue
-			}
-
-			var addr [16]byte
-			copy(addr[:], ipNet.IP.Mask(ipNet.Mask).To16())
-			cidr := uint8(ones)
-
-			if addr == ([16]byte{}) && cidr == 0 {
-				newIPv6SubnetList[netfilterTools.IPv6Subnet{
-					Address: [16]byte{0x00},
-					CIDR:    1,
-				}] = nil
-				newIPv6SubnetList[netfilterTools.IPv6Subnet{
-					Address: [16]byte{0x80},
-					CIDR:    1,
-				}] = nil
-			} else {
-				newIPv6SubnetList[netfilterTools.IPv6Subnet{
-					Address: addr,
-					CIDR:    cidr,
-				}] = nil
+		case models.RuleTypeSubnet, models.RuleTypeSubnet6:
+			for _, prefix := range subnetPrefixes(domain.Rule, domain.Type == models.RuleTypeSubnet6) {
+				next[prefix] = nil
 			}
 
 		default:
@@ -391,22 +293,18 @@ func (g *RuleSet) syncRules(rules []*models.Rule, retainOld bool) error {
 				if !domain.IsMatch(domainName) {
 					continue
 				}
-				domainAddresses := g.app.recordsCache.GetAddresses(domainName)
-				for _, address := range domainAddresses {
+				for _, address := range g.app.recordsCache.GetAddresses(domainName) {
 					ttl := remainingTTL(address.Deadline, now)
 					if ttl == 0 {
 						continue
 					}
-					if len(address.Address) == net.IPv4len {
-						subnet := netfilterTools.IPv4Subnet{Address: [4]byte(address.Address), CIDR: 32}
-						if oldTTL, exists := newIPv4SubnetList[subnet]; !exists || (oldTTL != nil && ttl > *oldTTL) {
-							newIPv4SubnetList[subnet] = &ttl
-						}
-					} else if len(address.Address) == net.IPv6len {
-						subnet := netfilterTools.IPv6Subnet{Address: [16]byte(address.Address), CIDR: 128}
-						if oldTTL, exists := newIPv6SubnetList[subnet]; !exists || (oldTTL != nil && ttl > *oldTTL) {
-							newIPv6SubnetList[subnet] = &ttl
-						}
+					addr, ok := netip.AddrFromSlice(address.Address)
+					if !ok {
+						continue
+					}
+					host := netip.PrefixFrom(addr, addr.BitLen())
+					if oldTTL, exists := next[host]; !exists || (oldTTL != nil && ttl > *oldTTL) {
+						next[host] = &ttl
 					}
 				}
 			}
@@ -414,36 +312,63 @@ func (g *RuleSet) syncRules(rules []*models.Rule, retainOld bool) error {
 	}
 
 	if retainOld {
-		old4, err := g.ipset.ListIPv4Subnets()
+		old, err := g.ipset.List()
 		if err != nil {
 			return err
 		}
-		old6, err := g.ipset.ListIPv6Subnets()
-		if err != nil {
-			return err
-		}
-		retainSubnets(newIPv4SubnetList, old4)
-		retainSubnets(newIPv6SubnetList, old6)
+		retainSubnets(next, old)
 	}
-	if err := g.ipset.Replace(newIPv4SubnetList, newIPv6SubnetList); err != nil {
+	if err := g.ipset.Replace(next); err != nil {
 		return fmt.Errorf("failed to replace routing set: %w", err)
 	}
-	g.permanentIPv4 = make(map[netfilterTools.IPv4Subnet]bool)
-	g.permanentIPv6 = make(map[netfilterTools.IPv6Subnet]bool)
-	for subnet, ttl := range newIPv4SubnetList {
-		if ttl == nil && subnet.CIDR == 32 {
-			g.permanentIPv4[subnet] = true
-		}
-	}
-	for subnet, ttl := range newIPv6SubnetList {
-		if ttl == nil && subnet.CIDR == 128 {
-			g.permanentIPv6[subnet] = true
+	g.permanent = make(map[netip.Prefix]bool)
+	for prefix, ttl := range next {
+		if ttl == nil && prefix.IsSingleIP() {
+			g.permanent[prefix] = true
 		}
 	}
 	return nil
 }
 
-func retainSubnets[K comparable](next, old map[K]netfilterTools.IPSetTimeout) {
+// subnetPrefixes parses a subnet/subnet6 rule with net.ParseCIDR semantics; a
+// plain address is a host route. Rules of the other family are ignored.
+func subnetPrefixes(rule string, ipv6 bool) []netip.Prefix {
+	bits := 32
+	if ipv6 {
+		bits = 128
+	}
+	ip, ipNet, err := net.ParseCIDR(rule)
+	if err != nil {
+		if ip = net.ParseIP(rule); ip == nil {
+			return nil
+		}
+		ipNet = &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)}
+	}
+	ones, maskBits := ipNet.Mask.Size()
+	if maskBits != bits {
+		return nil
+	}
+	masked := ipNet.IP.Mask(ipNet.Mask)
+	if ipv6 {
+		masked = masked.To16()
+	} else {
+		masked = masked.To4()
+	}
+	addr, ok := netip.AddrFromSlice(masked)
+	if !ok {
+		return nil
+	}
+	if ones == 0 {
+		// TODO: Fix (remove dirty hack) after resolving https://github.com/vishvananda/netlink/issues/1091
+		upper := make([]byte, len(masked))
+		upper[0] = 0x80
+		upperAddr, _ := netip.AddrFromSlice(upper)
+		return []netip.Prefix{netip.PrefixFrom(addr, 1), netip.PrefixFrom(upperAddr, 1)}
+	}
+	return []netip.Prefix{netip.PrefixFrom(addr, ones)}
+}
+
+func retainSubnets(next, old map[netip.Prefix]netfilterTools.IPSetTimeout) {
 	for subnet, ttl := range old {
 		current, exists := next[subnet]
 		if !exists || ttl == nil || (current != nil && *ttl > *current) {

@@ -4,62 +4,48 @@ package magitrickle
 
 import (
 	"errors"
+	"net/netip"
 
 	"magitrickle/utils/netfilterTools"
 )
 
-func (g *RuleSet) AddIPv4Subnet(subnet netfilterTools.IPv4Subnet, ttl netfilterTools.IPSetTimeout) error {
+func (g *RuleSet) AddSubnet(prefix netip.Prefix, ttl netfilterTools.IPSetTimeout) error {
 	g.locker.Lock()
 	defer g.locker.Unlock()
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return nil
 	}
-	return g.addIPv4Subnet(subnet, ttl)
+	return g.addSubnet(prefix, ttl)
 }
 
-func (g *RuleSet) AddIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterTools.IPSetTimeout) error {
+func (g *RuleSet) DelSubnet(prefix netip.Prefix) error {
 	g.locker.Lock()
 	defer g.locker.Unlock()
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return nil
 	}
-	return g.addIPv6Subnet(subnet, ttl)
+	return g.ipset.Del(prefix)
 }
 
-func (g *RuleSet) DelIPv4Subnet(subnet netfilterTools.IPv4Subnet) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() || !g.ConfiguredEnabled() {
-		return nil
-	}
-	return g.ipset.DelIPv4Subnet(subnet)
-}
-
-func (g *RuleSet) DelIPv6Subnet(subnet netfilterTools.IPv6Subnet) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() || !g.ConfiguredEnabled() {
-		return nil
-	}
-	return g.ipset.DelIPv6Subnet(subnet)
-}
-
-func (g *RuleSet) ListIPv4Subnets() (map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout, error) {
+func (g *RuleSet) ListSubnets() (map[netip.Prefix]netfilterTools.IPSetTimeout, error) {
 	g.locker.Lock()
 	defer g.locker.Unlock()
 	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return nil, nil
 	}
-	return g.ipset.ListIPv4Subnets()
+	return g.ipset.List()
 }
 
-func (g *RuleSet) ListIPv6Subnets() (map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout, error) {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() || !g.ConfiguredEnabled() {
-		return nil, nil
+// countFamilies counts IPv4 and IPv6 entries in a listing.
+func countFamilies(subnets map[netip.Prefix]netfilterTools.IPSetTimeout) (v4, v6 int) {
+	for prefix := range subnets {
+		if prefix.Addr().Is4() {
+			v4++
+		} else {
+			v6++
+		}
 	}
-	return g.ipset.ListIPv6Subnets()
+	return v4, v6
 }
 
 func (g *RuleSet) Sync() error {
