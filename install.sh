@@ -49,6 +49,7 @@ rotate_backups() (
             continue
         fi
         # Only installer-generated names; no unrelated files or line breaks.
+        case "${archive##*/}" in *[!0-9A-Za-z.-]*) continue ;; esac
         printf '%s\n' "${archive##*/}" | LC_ALL=C grep -Eq '^before-[0-9]+(\.[0-9]+){2,3}-[0-9]{8}T[0-9]{6}Z-[0-9]+\.tar\.gz$' || continue
         set -- "$@" "$archive"
     done

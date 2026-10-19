@@ -97,7 +97,7 @@ class InstallerTests(unittest.TestCase):
         path.chmod(0o755)
 
     def run_installer(self, *args, success=True):
-        result = subprocess.run(['sh', str(self.script), *args], env=self.env, text=True, capture_output=True)
+        result = subprocess.run(['sh', str(self.script), *args], cwd=self.root, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return (self.root / 'calls').read_text()
 
@@ -153,7 +153,8 @@ class InstallerTests(unittest.TestCase):
         self.env['QUOTING_STYLE'] = 'shell-always'
         directory = old[0].parent
         unrelated = [directory / 'manual.tar.gz', directory / 'before-manual.tar.gz',
-                     directory / 'before-1.0.0-20261018T120000Z-44\nextra.tar.gz']
+                     directory / 'before-1.0.0-20261018T120000Z-44\nextra.tar.gz',
+                     directory / 'before-1.0.0-20261018T120000Z-47.tar.gz\noutside.tar.gz']
         for path in unrelated:
             path.write_bytes(b'untouched')
         subdirectory = directory / 'before-1.0.0-20261018T120000Z-45.tar.gz'
