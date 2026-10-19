@@ -102,6 +102,12 @@ func TestRule_IsMatch_Wildcard(t *testing.T) {
 		{"test??.com", "test12.com", true},
 		{"test??.com", "test123.com", false},
 		{"test.com", "test12.com", false},
+		// Behaviour described in README: '.' is any character, and go-wildcard
+		// 2.1.0 lets '?' match nothing except near the end of the pattern.
+		{"*example.com", "exampleXcom", true},
+		{"te?t.com", "test.com", true},
+		{"te?t.com", "tet.com", true},
+		{"example.co?m", "example.com", false},
 	}
 
 	for _, tt := range tests {
