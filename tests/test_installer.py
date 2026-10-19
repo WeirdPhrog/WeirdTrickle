@@ -34,9 +34,20 @@ elif name == 'opkg':
     elif command == 'status':
         if (root / 'installed').exists():
             print('Version: ' + (root / 'installed').read_text())
-            print('Description: ' + os.environ.get('FAKE_DESCRIPTION', 'WeirdTrickle DNS-based routing application'))
+            # Entware normally omits Description from status output.
+            if 'FAKE_STATUS_DESCRIPTION' in os.environ:
+                print('Description: ' + os.environ['FAKE_STATUS_DESCRIPTION'])
     elif command == 'compare-versions':
-        sys.exit(0 if os.environ.get('FAKE_NEWER') else 1)
+        left, relation, right = args[1:]
+        equal = left == right
+        newer = not equal and bool(os.environ.get('FAKE_NEWER'))
+        if relation == '>':  # opkg/Debian: greater than OR equal.
+            matches = newer or equal
+        elif relation == '>>':
+            matches = newer
+        else:
+            raise SystemExit('Unexpected version relation: ' + relation)
+        sys.exit(0 if matches else 1)
     elif command == 'flag':
         (root / 'flag').write_text(args[1])
     elif command == '--force-downgrade':
@@ -44,6 +55,9 @@ elif name == 'opkg':
             sys.exit(0)  # opkg treats the same version as already installed.
         if os.environ.get('FAKE_INSTALL_FAIL'): sys.exit(1)
         (root / 'installed').write_text(pathlib.Path(args[-1]).name.split('_')[1])
+        control = root / 'opt/lib/opkg/info/magitrickle.control'
+        control.parent.mkdir(parents=True, exist_ok=True)
+        control.write_text('Package: magitrickle\nDescription: WeirdTrickle DNS-based routing application\n')
         config = root / 'opt/var/lib/magitrickle/config.yaml'
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text('package defaults\n')
@@ -98,11 +112,15 @@ class InstallerTests(unittest.TestCase):
 
     def run_installer(self, *args, success=True):
         result = subprocess.run(['sh', str(self.script), *args], cwd=self.root, env=self.env, text=True, capture_output=True)
+        self.last_result = result
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return (self.root / 'calls').read_text()
 
-    def existing_config(self, version='0.8.0-1'):
+    def existing_config(self, version='0.8.0-1', description='WeirdTrickle DNS-based routing application'):
         (self.root / 'installed').write_text(version)
+        control = self.opt / 'lib/opkg/info/magitrickle.control'
+        control.parent.mkdir(parents=True, exist_ok=True)
+        control.write_text(f'Package: magitrickle\nVersion: {version}\nDescription: {description}\n')
         config = self.opt / 'var/lib/magitrickle/config.yaml'
         config.parent.mkdir(parents=True)
         config.write_bytes(b'groups: [custom]\nsubscriptions: [custom]\n')
@@ -266,11 +284,32 @@ class InstallerTests(unittest.TestCase):
     def test_current_version_is_noop(self):
         self.existing_config(self.version + '-1')
         self.assertNotIn('opkg --force-downgrade', self.run_installer())
+        self.assertIn('Already up to date.', self.last_result.stdout)
+        self.assertNotIn('migration is required', self.last_result.stdout)
+
+    def test_installed_212_without_status_description_rotates_without_reinstall(self):
+        self.prepare_release('2.1.2')
+        config = self.existing_config('2.1.2-1')
+        before = config.read_bytes()
+        old = self.seed_backups()
+        calls = self.run_installer()
+        self.assertNotIn('opkg update', calls)
+        self.assertNotIn('opkg --force-downgrade', calls)
+        self.assertIn('Already up to date.', self.last_result.stdout)
+        self.assertNotIn('migration is required', self.last_result.stdout)
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(set(old[0].parent.iterdir()), set(old[1:]))
+
+    def test_status_description_fallback_when_control_file_is_missing(self):
+        self.existing_config(self.version + '-1')
+        (self.opt / 'lib/opkg/info/magitrickle.control').unlink()
+        self.env['FAKE_STATUS_DESCRIPTION'] = 'WeirdTrickle DNS-based routing application'
+        self.assertNotIn('opkg --force-downgrade', self.run_installer())
+        self.assertIn('Already up to date.', self.last_result.stdout)
 
     def test_same_version_upstream_is_reinstalled_and_preserves_config(self):
-        config = self.existing_config(self.version + '-1')
+        config = self.existing_config(self.version + '-1', description='DNS-based routing application')
         before = config.read_bytes()
-        self.env['FAKE_DESCRIPTION'] = 'MagiTrickle DNS-based routing application'
         calls = self.run_installer()
         self.assertIn('opkg --force-downgrade --force-reinstall install', calls)
         self.assertEqual(config.read_bytes(), before)
@@ -278,13 +317,11 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(len(list((self.opt / 'var/backups/magitrickle').glob('*.tar.gz'))), 1)
 
     def test_same_version_unknown_package_is_not_mistaken_for_fork(self):
-        self.existing_config(self.version + '-1')
-        self.env['FAKE_DESCRIPTION'] = ''
+        self.existing_config(self.version + '-1', description='')
         self.assertIn('opkg --force-downgrade --force-reinstall install', self.run_installer())
 
     def test_check_same_version_upstream_does_not_reinstall(self):
-        self.existing_config(self.version + '-1')
-        self.env['FAKE_DESCRIPTION'] = 'MagiTrickle DNS-based routing application'
+        self.existing_config(self.version + '-1', description='DNS-based routing application')
         calls = self.run_installer('--check')
         self.assertNotIn('opkg update', calls)
         self.assertNotIn('opkg --force-downgrade', calls)

@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.1.3] — 2026-10-19
+
+### Исправлено
+
+- Установщик использует строгое сравнение версий `opkg` (`>>`): одинаковая установленная и доступная версия больше не считаются понижением. В `opkg` оператор `>` включает равенство.
+- Форк распознаётся по `Description` установленного `/opt/lib/opkg/info/magitrickle.control`, поскольку `opkg status` в Entware может не выводить это поле. При отсутствии control-файла сохранён запасной разбор `status`. Повторный запуск актуального установщика корректно выполняет ротацию до двух архивов без переустановки пакета и перезапуска сервиса.
+- Тесты установщика воспроизводят отсутствие `Description` в `status` и настоящую семантику сравнений `opkg`; добавлен сценарий повторного запуска с установленной 2.1.2 и лишними архивами.
+
 ## [2.1.2] — 2026-10-19
 
 ### Исправлено
@@ -148,7 +156,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.2...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.3...develop
+[2.1.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.0...v2.1.2
 [2.1.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.0.2...v2.1.0
