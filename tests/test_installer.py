@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 
 
@@ -107,6 +108,24 @@ class InstallerTests(unittest.TestCase):
         config.write_bytes(b'groups: [custom]\nsubscriptions: [custom]\n')
         return config
 
+    def seed_backups(self, count=3):
+        directory = self.opt / 'var/backups/magitrickle'
+        directory.mkdir(parents=True, exist_ok=True)
+        names = [
+            'before-2026.10.16.20-20261016T120000Z-31.tar.gz',
+            'before-2.0.2-20261018T120000Z-32.tar.gz',
+            'before-2.1.0-20261019T120000Z-33.tar.gz',
+        ]
+        archives = []
+        for index, name in enumerate(names[:count]):
+            archive = directory / name
+            archive.write_bytes(f'previous backup {index}'.encode())
+            # Future mtimes simulate a router whose clock has since moved back.
+            stamp = time.time() + 86400 + index
+            os.utime(archive, (stamp, stamp))
+            archives.append(archive)
+        return archives
+
     def test_fresh_keenetic_install(self):
         calls = self.run_installer()
         self.assertIn('https://github.com/WeirdPhrog/WeirdTrickle/releases/', calls)
@@ -122,10 +141,85 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(config.read_bytes(), before)
         archives = list((self.opt / 'var/backups/magitrickle').glob('*.tar.gz'))
         self.assertEqual(len(archives), 1)
+        self.assertEqual(archives[0].stat().st_mode & 0o777, 0o600)
         with tarfile.open(archives[0]) as archive:
             self.assertEqual(archive.extractfile('var/lib/magitrickle/config.yaml').read(), before)
         self.assertLess(calls.index('opkg flag ok'), calls.index('opkg --force-downgrade'))
         self.assertLess(calls.index('opkg --force-downgrade'), calls.index('opkg flag hold'))
+
+    def test_backup_rotation_keeps_new_and_latest_previous_and_ignores_other_files(self):
+        config = self.existing_config()
+        old = self.seed_backups()
+        self.env['QUOTING_STYLE'] = 'shell-always'
+        directory = old[0].parent
+        unrelated = [directory / 'manual.tar.gz', directory / 'before-manual.tar.gz',
+                     directory / 'before-1.0.0-20261018T120000Z-44\nextra.tar.gz']
+        for path in unrelated:
+            path.write_bytes(b'untouched')
+        subdirectory = directory / 'before-1.0.0-20261018T120000Z-45.tar.gz'
+        subdirectory.mkdir()
+        outside = self.root / 'outside.tar.gz'
+        outside.write_bytes(b'outside')
+        link = directory / 'before-1.0.0-20261018T120000Z-46.tar.gz'
+        link.symlink_to(outside)
+
+        self.run_installer()
+
+        self.assertFalse(old[0].exists())
+        self.assertFalse(old[1].exists())
+        self.assertEqual(old[2].read_bytes(), b'previous backup 2')
+        new = set(directory.iterdir()) - set(old) - set(unrelated) - {subdirectory, link}
+        self.assertEqual(len(new), 1)
+        current = new.pop()
+        with tarfile.open(current) as archive:
+            self.assertEqual(archive.extractfile('var/lib/magitrickle/config.yaml').read(), config.read_bytes())
+        self.assertEqual(set(directory.iterdir()), {old[2], current, *unrelated, subdirectory, link})
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(outside.read_bytes(), b'outside')
+        self.assertTrue(all(path.read_bytes() == b'untouched' for path in unrelated))
+
+    def test_current_version_rotates_without_creating_another_archive(self):
+        self.existing_config(self.version + '-1')
+        old = self.seed_backups()
+        (old[0].parent / '.backup.incomplete').write_bytes(b'interrupted backup')
+        self.assertNotIn('opkg update', self.run_installer())
+        self.assertEqual(set(old[0].parent.iterdir()), set(old[1:]))
+
+    def test_check_does_not_rotate_backups(self):
+        self.existing_config()
+        old = self.seed_backups()
+        incomplete = old[0].parent / '.backup.incomplete'
+        incomplete.write_bytes(b'interrupted backup')
+        self.run_installer('--check')
+        self.assertEqual(set(old[0].parent.iterdir()), {*old, incomplete})
+
+    def test_failed_archive_preserves_both_previous_backups(self):
+        self.existing_config()
+        old = self.seed_backups(2)
+        self.executable(self.opt / 'bin/tar', '#!/bin/sh\nprintf partial > "$2"\nexit 1\n')
+        self.assertNotIn('opkg update', self.run_installer(success=False))
+        self.assertEqual(set(old[0].parent.iterdir()), set(old))
+        self.assertEqual([path.read_bytes() for path in old], [b'previous backup 0', b'previous backup 1'])
+        self.assertFalse((self.root / 'magitrickle-update.lock').exists())
+
+    def test_failed_archive_rename_preserves_both_previous_backups(self):
+        self.existing_config()
+        old = self.seed_backups(2)
+        self.executable(self.opt / 'bin/mv', '#!/bin/sh\nexit 1\n')
+        self.assertNotIn('opkg update', self.run_installer(success=False))
+        self.assertEqual(set(old[0].parent.iterdir()), set(old))
+
+    def test_failed_install_retains_new_backup_with_two_archive_limit(self):
+        config = self.existing_config()
+        old = self.seed_backups(2)
+        self.env['FAKE_PARTIAL_INSTALL_FAIL'] = '1'
+        self.run_installer(success=False)
+        archives = set(old[0].parent.iterdir())
+        self.assertEqual(len(archives), 2)
+        self.assertIn(old[1], archives)
+        current = next(path for path in archives if path != old[1])
+        with tarfile.open(current) as archive:
+            self.assertEqual(archive.extractfile('var/lib/magitrickle/config.yaml').read(), config.read_bytes())
 
     def test_plain_entware_uses_plain_target(self):
         (self.opt / 'etc/ndm').rmdir()
