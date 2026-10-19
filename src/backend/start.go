@@ -96,7 +96,7 @@ func (a *App) Start(ctx context.Context) (err error) {
 	errChan := make(chan error, 4)
 
 	if !a.Config().DNSProxy.DisableRemap53 {
-		interfaceAddrs, err := a.lanAddresses()
+		interfaceAddrs, err := a.lanAddresses(false)
 		if err != nil {
 			return err
 		}

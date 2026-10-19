@@ -45,7 +45,7 @@ func TestRealRuleSetSyncDNSRemapAddresses(t *testing.T) {
 	a := &App{config: constant.DefaultAppConfig, nfHelper: nh}
 	a.config.Link = []string{"mtdns"}
 	a.publishConfigLocked()
-	addresses, err := a.lanAddresses()
+	addresses, err := a.lanAddresses(false)
 	check(err)
 	a.dnsOverrider = nh.PortRemap("DNSOR", 53, 3553, addresses)
 	check(a.dnsOverrider.Enable())
@@ -73,6 +73,9 @@ func TestRealRuleSetSyncDNSRemapAddresses(t *testing.T) {
 	}
 	check(netlink.LinkDel(lan))
 	check(a.refreshDNSRemap())
+	if _, err := a.lanAddresses(false); err == nil {
+		t.Fatal("startup silently accepted a missing configured LAN interface")
+	}
 	for _, command := range []string{"iptables", "ip6tables"} {
 		if strings.Contains(readRules(command), "-A ") {
 			t.Fatal("deleted LAN retained DNS capture destinations")

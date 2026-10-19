@@ -134,13 +134,13 @@ func (a *App) handleAddr(event netlink.AddrUpdate) error {
 	return errors.Join(errs...)
 }
 
-func (a *App) lanAddresses() ([]netlink.Addr, error) {
+func (a *App) lanAddresses(allowMissing bool) ([]netlink.Addr, error) {
 	var addresses []netlink.Addr
 	for _, name := range a.Config().Link {
 		link, err := netlink.LinkByName(name)
 		if err != nil {
 			var missing netlink.LinkNotFoundError
-			if errors.As(err, &missing) {
+			if allowMissing && errors.As(err, &missing) {
 				continue
 			}
 			return nil, fmt.Errorf("failed to find LAN interface: %w", err)
@@ -158,7 +158,7 @@ func (a *App) refreshDNSRemap() error {
 	if a.dnsOverrider == nil {
 		return nil
 	}
-	addresses, err := a.lanAddresses()
+	addresses, err := a.lanAddresses(true)
 	if err != nil {
 		return err
 	}
