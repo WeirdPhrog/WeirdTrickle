@@ -188,7 +188,7 @@
     if (searchActive) return;
     if (!reportedFinished && (totalRulesCount === 0 || displayedRules.length > 0)) {
       reportedFinished = true;
-      store.handleGroupFinished();
+      store.handleItemFinished();
     }
   });
 

@@ -225,7 +225,7 @@
     <Placeholder variant="loading" minHeight="auto">
       {t("Loading groups...")}
     </Placeholder>
-  {:else if store.noVisibleGroups}
+  {:else if store.noVisibleItems}
     <Placeholder variant="empty" minHeight="auto">
       {t("No matches found")}
     </Placeholder>
@@ -242,11 +242,11 @@
     oninput={store.markDataRevision}
     onchange={store.markDataRevision}
   >
-    {#each store.data.slice(0, store.renderGroupsLimit) as group, group_index (group.id)}
+    {#each store.data.slice(0, store.renderLimit) as group, group_index (group.id)}
       {@const isVisible = !store.searchActive || store.visibilityMap.has(group_index)}
 
       <div class="group-wrapper" class:is-hidden={!isVisible}>
-        {#if group_index === store.firstVisibleGroupIndex}
+        {#if group_index === store.firstVisibleIndex}
           <div
             class="group-drop-slot group-drop-slot--top"
             aria-hidden="true"
@@ -385,8 +385,7 @@
       linear-gradient(black, black) center / 100% 1rem no-repeat;
   }
 
-  .group-wrapper:not(:has(~ .group-wrapper:not(.is-hidden)))
-    .group-drop-slot--bottom::before {
+  .group-wrapper:not(:has(~ .group-wrapper:not(.is-hidden))) .group-drop-slot--bottom::before {
     mask:
       radial-gradient(circle at 100% 0, transparent 0.5rem, black calc(0.5rem + 0.5px)) top left /
         0.5rem 0.5rem no-repeat,

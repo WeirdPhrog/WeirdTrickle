@@ -193,16 +193,16 @@ describe("GroupsStore mutations and validation", () => {
     );
   });
 
-  it("changeGroupIndex supports before/after and clamps target indexes", () => {
+  it("changeIndex supports before/after and clamps target indexes", () => {
     const store = createStore([makeGroup("a"), makeGroup("b"), makeGroup("c")]);
 
-    store.changeGroupIndex(0, 2, "before");
+    store.changeIndex(0, 2, "before");
     assert.deepStrictEqual(groupIds(store), ["b", "a", "c"]);
 
-    store.changeGroupIndex(0, 99, "after");
+    store.changeIndex(0, 99, "after");
     assert.deepStrictEqual(groupIds(store), ["a", "c", "b"]);
 
-    store.changeGroupIndex(0, 0, "before");
+    store.changeIndex(0, 0, "before");
     assert.deepStrictEqual(groupIds(store), ["a", "c", "b"]);
     assert.strictEqual(store.dataRevision, 2);
   });
@@ -305,14 +305,14 @@ describe("GroupsStore mutations and validation", () => {
     assert.strictEqual(store.open_state.g1, true);
     assert.strictEqual(store.open_state.g2, true);
 
-    store.renderGroupsLimit = 5;
-    store.finishedGroupsCount = 9;
+    store.renderLimit = 5;
+    store.finishedCount = 9;
     await store.overwriteGroups([makeGroup("new1")]);
     assert.deepStrictEqual(groupIds(store), ["new1"]);
     assert.strictEqual("g1" in store.open_state, false);
     assert.strictEqual(store.open_state.new1, true);
-    assert.strictEqual(store.renderGroupsLimit, 1);
-    assert.strictEqual(store.finishedGroupsCount, 0);
+    assert.strictEqual(store.renderLimit, 1);
+    assert.strictEqual(store.finishedCount, 0);
   });
 
   it("addRulesToGroup prepends rules and no-ops for empty or invalid target", async () => {

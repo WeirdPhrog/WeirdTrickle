@@ -1,17 +1,12 @@
 import { t } from "../../data/locale.svelte";
-import { ChangeTracker } from "../../utils/change-tracker.svelte";
+import { ListStore, type VisibleItem } from "../list-store.svelte";
 
 import { type Subscription, type SubscriptionRule } from "../../types";
 import { randomId } from "../../utils/defaults";
 import { overlay, toast } from "../../utils/events";
 import { fetcher } from "../../utils/fetcher";
-import { isValidRule } from "../../utils/rule-validators";
 
 export const SUBSCRIPTIONS_STORE_CONTEXT = Symbol("subscriptions-store");
-
-const SEARCH_DEBOUNCE_MS = 150 as const;
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 export function normalizeSubscriptionUrl(value: string) {
   return value.trim();
@@ -28,11 +23,6 @@ export function validateSubscriptionUrl(value: string) {
     return false;
   }
 }
-
-export type VisibleSubscription = {
-  group_index: number;
-  ruleIndices: number[] | null;
-};
 
 export type SubscriptionDragData = {
   group_id: string;
@@ -54,11 +44,7 @@ type AddSubscriptionPayload = {
   interval: number;
 };
 
-export class SubscriptionsStore {
-  tracker = $state(new ChangeTracker<Subscription[]>([]));
-  data = $derived.by(() => this.tracker.data);
-  dataRevision = $state(0);
-  valid_rules = $state(true);
+export class SubscriptionsStore extends ListStore<Subscription> {
   subscriptionUrlErrors = $derived.by(() => {
     const errors = new Map<string, string>();
     const idsByUrl = new Map<string, string[]>();
@@ -88,258 +74,46 @@ export class SubscriptionsStore {
   valid_subscription_urls = $derived(this.subscriptionUrlErrors.size === 0);
   canSave = $derived(this.tracker.isDirty && this.valid_rules && this.valid_subscription_urls);
 
-  open_state = $state<Record<string, boolean>>({});
-
-  searchValue = $state("");
-  visibleSubscriptions = $state<VisibleSubscription[]>([]);
-  searchPending = $state(false);
-
-  normalizedSearch = $derived(this.searchValue.trim().toLowerCase());
-  searchActive = $derived(Boolean(this.normalizedSearch));
-
-  visibilityMap = $derived(
-    new Map(this.visibleSubscriptions.map((entry) => [entry.group_index, entry.ruleIndices])),
-  );
-
-  firstVisibleSubscriptionIndex = $derived(
-    this.searchActive
-      ? this.visibleSubscriptions.length
-        ? this.visibleSubscriptions[0].group_index
-        : -1
-      : 0,
-  );
-
-  noVisibleSubscriptions = $derived(
-    this.searchActive && !this.searchPending && this.visibleSubscriptions.length === 0,
-  );
-
-  fetchError = $state(false);
-  dataLoaded = $state(false);
-  finishedSubscriptionsCount = $state(0);
-
-  isAllRendered = $derived(
-    this.dataLoaded &&
-      (this.data.length === 0 ||
-        this.finishedSubscriptionsCount >= this.data.length ||
-        this.searchActive),
-  );
-
-  isEmptyData = $derived(
-    this.dataLoaded &&
-      !this.fetchError &&
-      !this.searchActive &&
-      !this.searchPending &&
-      this.data.length === 0,
-  );
-
-  renderSubscriptionsLimit = $state(1);
-  renderSubscriptionsTimeout: number | null = null;
-
-  #forcedSubscriptionIds = new Set<string>();
-  #forcedRuleIdsBySubscription = new Map<string, Set<string>>();
-  #forcedSearchKey = "";
-  #debounceTimer: number | null = null;
-  #dispose: (() => void) | null = null;
+  protected readonly itemsName = "subscriptions";
 
   constructor() {
-    this.#setupEffects();
+    super();
+    this.setupEffects();
   }
 
-  #setupEffects() {
-    this.#dispose = $effect.root(() => {
-      $effect(() => {
-        if (typeof window === "undefined" || !this.tracker.isDirty) return;
-
-        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-          event.preventDefault();
-        };
-
-        window.addEventListener("beforeunload", handleBeforeUnload);
-        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-      });
-
-      $effect(() => {
-        this.dataRevision;
-        if (typeof window === "undefined") return;
-        const timer = setTimeout(() => this.checkRulesValidityState(), 10);
-        return () => clearTimeout(timer);
-      });
-
-      $effect(() => {
-        const query = this.normalizedSearch;
-        this.dataRevision;
-        this.data.length;
-
-        if (this.#debounceTimer) {
-          clearTimeout(this.#debounceTimer);
-          this.#debounceTimer = null;
-        }
-
-        if (!query) {
-          this.visibleSubscriptions = this.data.map((_, index) => ({
-            group_index: index,
-            ruleIndices: null,
-          }));
-          this.searchPending = false;
-          return;
-        }
-
-        this.searchPending = true;
-
-        if (typeof window === "undefined") {
-          this.performSearch();
-          return;
-        }
-
-        this.#debounceTimer = window.setTimeout(() => this.performSearch(), SEARCH_DEBOUNCE_MS);
-      });
-
-      $effect(() => {
-        if (this.searchActive) {
-          this.renderSubscriptionsLimit = this.data.length;
-          if (this.renderSubscriptionsTimeout) {
-            clearTimeout(this.renderSubscriptionsTimeout);
-            this.renderSubscriptionsTimeout = null;
-          }
-        } else {
-          this.scheduleSubscriptionsNext();
-        }
-      });
-
-      $effect(() => {
-        this.data.length;
-        this.scheduleSubscriptionsNext();
-      });
-
-      return () => {
-        if (this.#debounceTimer) {
-          clearTimeout(this.#debounceTimer);
-          this.#debounceTimer = null;
-        }
-
-        if (this.renderSubscriptionsTimeout) {
-          clearTimeout(this.renderSubscriptionsTimeout);
-          this.renderSubscriptionsTimeout = null;
-        }
-      };
-    });
+  protected async fetchItems() {
+    return (
+      (await fetcher.get<{ subscriptions: Subscription[] }>("/subscriptions"))?.subscriptions ?? []
+    );
   }
 
-  destroy() {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("keydown", this.handleSaveShortcut);
-    }
-
-    if (this.#dispose) {
-      this.#dispose();
-      this.#dispose = null;
-    }
+  protected snapshotForSave() {
+    return $state.snapshot(this.data).map((subscription) => ({
+      ...subscription,
+      url: normalizeSubscriptionUrl(subscription.url),
+    }));
   }
 
-  mount = async () => {
-    this.finishedSubscriptionsCount = 0;
-    this.fetchError = false;
-    try {
-      const fetched =
-        (await fetcher.get<{ subscriptions: Subscription[] }>("/subscriptions"))?.subscriptions ??
-        [];
-      this.tracker = new ChangeTracker(fetched);
-      this.dataRevision = 0;
-      if (typeof window !== "undefined") {
-        setTimeout(() => this.checkRulesValidityState(), 10);
-      }
-    } catch (error) {
-      this.fetchError = true;
-      console.error("Failed to load subscriptions:", error);
-    } finally {
-      this.dataLoaded = true;
-    }
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("keydown", this.handleSaveShortcut);
-    }
-  };
-
-  handleSaveShortcut = (event: KeyboardEvent) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-      if (this.canSave) {
-        event.preventDefault();
-        this.saveChanges();
-      }
-    }
-  };
-
-  #resetForcedVisibility(searchKey: string) {
-    if (!this.#forcedSearchKey) return;
-    if (this.#forcedSearchKey !== searchKey) {
-      this.#forcedSubscriptionIds.clear();
-      this.#forcedRuleIdsBySubscription.clear();
-      this.#forcedSearchKey = "";
-    }
-  }
-
-  forceVisibleGroup(groupId: string) {
-    if (!this.normalizedSearch) return;
-    this.#forcedSubscriptionIds.add(groupId);
-    this.#forcedSearchKey = this.normalizedSearch;
-  }
-
-  forceVisibleRule(groupId: string, ruleId: string) {
-    if (!this.normalizedSearch) return;
-    let forced = this.#forcedRuleIdsBySubscription.get(groupId);
-    if (!forced) {
-      forced = new Set<string>();
-      this.#forcedRuleIdsBySubscription.set(groupId, forced);
-    }
-    forced.add(ruleId);
-    this.#forcedSearchKey = this.normalizedSearch;
-  }
-
-  removeForcedGroup(groupId: string) {
-    this.#forcedSubscriptionIds.delete(groupId);
-    this.#forcedRuleIdsBySubscription.delete(groupId);
-  }
-
-  removeForcedRule(groupId: string, ruleId: string) {
-    const forced = this.#forcedRuleIdsBySubscription.get(groupId);
-    if (!forced) return;
-    forced.delete(ruleId);
-    if (!forced.size) this.#forcedRuleIdsBySubscription.delete(groupId);
-  }
-
-  moveForcedRule(sourceGroupId: string, targetGroupId: string, ruleId: string) {
-    if (sourceGroupId === targetGroupId) return;
-    const forced = this.#forcedRuleIdsBySubscription.get(sourceGroupId);
-    if (!forced?.has(ruleId)) return;
-    forced.delete(ruleId);
-    if (!forced.size) this.#forcedRuleIdsBySubscription.delete(sourceGroupId);
-    let targetForced = this.#forcedRuleIdsBySubscription.get(targetGroupId);
-    if (!targetForced) {
-      targetForced = new Set<string>();
-      this.#forcedRuleIdsBySubscription.set(targetGroupId, targetForced);
-    }
-    targetForced.add(ruleId);
+  protected persist(subscriptions: Subscription[]) {
+    return fetcher.put("/subscriptions", { subscriptions });
   }
 
   performSearch() {
     const query = this.normalizedSearch;
-    this.#resetForcedVisibility(query);
+    this.resetForcedVisibility(query);
 
     if (!query) {
-      this.visibleSubscriptions = this.data.map((_, index) => ({
-        group_index: index,
-        ruleIndices: null,
-      }));
+      this.showAllItems();
       this.searchPending = false;
       return;
     }
 
     const subscriptions = this.data;
-    const nextVisible: VisibleSubscription[] = [];
+    const nextVisible: VisibleItem[] = [];
 
     for (let i = 0; i < subscriptions.length; i++) {
       const subscription = subscriptions[i];
-      const isForcedSubscription = this.#forcedSubscriptionIds.has(subscription.id);
+      const isForcedSubscription = this.forcedItemIds.has(subscription.id);
 
       const nameMatches = (subscription.name || "").toLowerCase().includes(query);
       const urlMatches = (subscription.url || "").toLowerCase().includes(query);
@@ -350,7 +124,7 @@ export class SubscriptionsStore {
       }
 
       const matchedRuleIndices: number[] = [];
-      const forcedRules = this.#forcedRuleIdsBySubscription.get(subscription.id);
+      const forcedRules = this.forcedRuleIdsByItem.get(subscription.id);
       const rules = subscription.rules;
 
       for (let ruleIndex = 0; ruleIndex < rules.length; ruleIndex++) {
@@ -367,41 +141,9 @@ export class SubscriptionsStore {
       }
     }
 
-    this.visibleSubscriptions = nextVisible;
+    this.visibleItems = nextVisible;
     this.searchPending = false;
   }
-
-  saveChanges() {
-    this.checkRulesValidityState();
-    if (!this.canSave) return;
-    overlay.show(t("saving changes..."));
-
-    const rawData = $state.snapshot(this.data).map((subscription) => ({
-      ...subscription,
-      url: normalizeSubscriptionUrl(subscription.url),
-    }));
-
-    fetcher
-      .put("/subscriptions", { subscriptions: rawData })
-      .then(() => {
-        this.tracker.reset(rawData);
-        overlay.hide();
-        toast.success(t("Saved"));
-      })
-      .catch(() => {
-        overlay.hide();
-      });
-  }
-
-  checkRulesValidityState = () => {
-    this.valid_rules = this.data.every((subscription) =>
-      subscription.rules.every((rule) => !rule.enable || isValidRule(rule)),
-    );
-  };
-
-  markDataRevision = () => {
-    this.dataRevision += 1;
-  };
 
   normalizeSubscriptionUrl(index: number) {
     const subscription = this.data[index];
@@ -504,51 +246,9 @@ export class SubscriptionsStore {
     }
   }
 
-  changeSubscriptionIndex(
-    from_index: number,
-    to_index: number,
-    insert: "before" | "after" = "before",
-  ) {
-    if (from_index === to_index && insert !== "after") return;
-    if (from_index < 0 || from_index >= this.data.length) return;
-
-    const subscription = this.data[from_index];
-    if (!subscription) return;
-
-    this.data.splice(from_index, 1);
-
-    let target = insert === "after" ? to_index + 1 : to_index;
-    if (from_index < target) target -= 1;
-
-    target = clamp(target, 0, this.data.length);
-    this.data.splice(target, 0, subscription);
-
-    this.markDataRevision();
-  }
-
   handleSubscriptionSlotDrop = (source: SubscriptionDragData, target: SubscriptionDropSlotData) => {
     const { group_index: from_index } = source;
     const { group_index: to_index, insert } = target;
-    this.changeSubscriptionIndex(from_index, to_index, insert);
+    this.changeIndex(from_index, to_index, insert);
   };
-
-  handleSubscriptionFinished = () => {
-    this.finishedSubscriptionsCount += 1;
-  };
-
-  scheduleSubscriptionsNext() {
-    if (typeof window === "undefined") return;
-    if (this.renderSubscriptionsTimeout) return;
-    if (this.renderSubscriptionsLimit >= this.data.length) return;
-
-    this.renderSubscriptionsTimeout = window.setTimeout(() => {
-      this.renderSubscriptionsTimeout = null;
-      if (this.searchActive) {
-        this.renderSubscriptionsLimit = this.data.length;
-        return;
-      }
-      this.renderSubscriptionsLimit = Math.min(this.renderSubscriptionsLimit + 2, this.data.length);
-      this.scheduleSubscriptionsNext();
-    }, 15);
-  }
 }

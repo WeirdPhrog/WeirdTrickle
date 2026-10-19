@@ -1,11 +1,10 @@
 import { tick } from "svelte";
 
 import { t } from "../../data/locale.svelte";
-import { ChangeTracker } from "../../utils/change-tracker.svelte";
+import { clamp, ListStore, type VisibleItem } from "../list-store.svelte";
 
 import { type Group, type Rule } from "../../types";
 import { defaultGroup, defaultRule, randomId } from "../../utils/defaults";
-import { overlay, toast } from "../../utils/events";
 import { fetcher } from "../../utils/fetcher";
 import { type SortDirection, type SortField } from "../../utils/rule-sorter";
 import { isValidRule } from "../../utils/rule-validators";
@@ -22,19 +21,11 @@ import { captureRuleMove } from "./rule-motion";
 
 export const GROUPS_STORE_CONTEXT = Symbol("groups-store");
 
-const SEARCH_DEBOUNCE_MS = 150 as const;
 const IMPORT_RULES_CHUNK_SIZE = 300 as const;
 const IMPORT_GROUPS_CLONE_CHUNK_SIZE = 20 as const;
 const IMPORT_GROUPS_INSERT_CHUNK_SIZE = 25 as const;
 export const RULE_SEARCH_MATCH_NAME = 1 << 0;
 export const RULE_SEARCH_MATCH_PATTERN = 1 << 1;
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-export type VisibleGroup = {
-  group_index: number;
-  ruleIndices: number[] | null;
-};
 
 export type GroupDragData = {
   group_id: string;
@@ -92,53 +83,15 @@ type SearchHighlightSegment = {
   matched: boolean;
 };
 
-export class GroupsStore {
-  tracker = $state(new ChangeTracker<Group[]>([]));
-  data = $derived.by(() => this.tracker.data);
-  dataRevision = $state(0);
-  valid_rules = $state(true);
+export class GroupsStore extends ListStore<Group> {
   canSave = $derived(this.tracker.isDirty && this.valid_rules);
 
-  open_state = $state<Record<string, boolean>>({});
-
-  searchValue = $state("");
-  visibleGroups = $state<VisibleGroup[]>([]);
-  searchPending = $state(false);
   searchMatchedGroupIds = $state<Set<string>>(new Set());
   searchRuleMatchMaskById = $state<Map<string, number>>(new Map());
-
-  normalizedSearch = $derived(this.searchValue.trim().toLowerCase());
-  searchActive = $derived(Boolean(this.normalizedSearch));
 
   searchIndex = $state<SearchIndexGroup[]>([]);
   searchIndexRevision = $state(-1);
 
-  visibilityMap = $derived(new Map(this.visibleGroups.map((v) => [v.group_index, v.ruleIndices])));
-
-  firstVisibleGroupIndex = $derived(
-    this.searchActive ? (this.visibleGroups.length ? this.visibleGroups[0].group_index : -1) : 0,
-  );
-
-  noVisibleGroups = $derived(
-    this.searchActive && !this.searchPending && this.visibleGroups.length === 0,
-  );
-
-  finishedGroupsCount = $state(0);
-  fetchError = $state(false);
-  dataLoaded = $state(false);
-
-  isAllRendered = $derived(
-    this.dataLoaded &&
-      (this.data.length === 0 || this.finishedGroupsCount >= this.data.length || this.searchActive),
-  );
-
-  isEmptyData = $derived(
-    this.dataLoaded &&
-      !this.fetchError &&
-      !this.searchActive &&
-      !this.searchPending &&
-      this.data.length === 0,
-  );
   duplicateRuleIds = $state<Set<string>>(new Set());
   duplicateGroupIds = $state<Set<string>>(new Set());
   duplicateRuleKeys = $state<Map<string, string>>(new Map());
@@ -148,216 +101,62 @@ export class GroupsStore {
   highlightedRuleId = $state<string | null>(null);
   duplicateFocusRequest = $state<DuplicateRuleFocusRequest | null>(null);
 
-  renderGroupsLimit = $state(1);
-  renderGroupsTimeout: number | null = null;
-
-  #forcedGroupIds = new Set<string>();
-  #forcedRuleIdsByGroup = new Map<string, Set<string>>();
-  #forcedSearchKey = "";
-  #debounceTimer: number | null = null;
   #duplicateRuleIdsTimer: number | null = null;
   #highlightedRuleTimer: number | null = null;
   #searchIndexBuildToken = 0;
   #searchIndexBuilding = false;
-  #dispose: (() => void) | null = null;
+
+  protected readonly itemsName = "groups";
 
   constructor() {
-    this.#setupEffects();
+    super();
+    this.setupEffects();
   }
 
-  #setupEffects() {
-    this.#dispose = $effect.root(() => {
-      $effect(() => {
-        if (typeof window === "undefined" || !this.tracker.isDirty) return;
-
-        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-          event.preventDefault();
-        };
-
-        window.addEventListener("beforeunload", handleBeforeUnload);
-        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-      });
-
-      $effect(() => {
-        this.dataRevision;
-        if (typeof window === "undefined") return;
-        const timer = setTimeout(() => this.checkRulesValidityState(), 10);
-        return () => clearTimeout(timer);
-      });
-
-      $effect(() => {
-        const query = this.normalizedSearch;
-        this.dataRevision;
-        this.data.length;
-
-        if (this.#debounceTimer) {
-          clearTimeout(this.#debounceTimer);
-          this.#debounceTimer = null;
-        }
-
-        if (!query) {
-          this.#cancelSearchIndexBuild();
-          this.visibleGroups = this.data.map((_, index) => ({
-            group_index: index,
-            ruleIndices: null,
-          }));
-          this.#clearSearchMatches();
-          this.searchPending = false;
-          return;
-        }
-
-        this.searchPending = true;
-
-        if (this.searchIndexRevision !== this.dataRevision) {
-          this.#startSearchIndexBuild();
-        }
-
-        if (typeof window === "undefined") {
-          this.performSearch();
-          return;
-        }
-
-        this.#debounceTimer = window.setTimeout(() => this.performSearch(), SEARCH_DEBOUNCE_MS);
-      });
-
-      $effect(() => {
-        if (this.searchActive) {
-          this.renderGroupsLimit = this.data.length;
-          if (this.renderGroupsTimeout) {
-            clearTimeout(this.renderGroupsTimeout);
-            this.renderGroupsTimeout = null;
-          }
-        } else {
-          this.scheduleGroupsNext();
-        }
-      });
-
-      $effect(() => {
-        this.data.length;
-        this.scheduleGroupsNext();
-      });
-
-      return () => {
-        if (this.#debounceTimer) {
-          clearTimeout(this.#debounceTimer);
-          this.#debounceTimer = null;
-        }
-
-        if (this.#duplicateRuleIdsTimer) {
-          clearTimeout(this.#duplicateRuleIdsTimer);
-          this.#duplicateRuleIdsTimer = null;
-        }
-
-        if (this.#highlightedRuleTimer) {
-          clearTimeout(this.#highlightedRuleTimer);
-          this.#highlightedRuleTimer = null;
-        }
-
-        if (this.renderGroupsTimeout) {
-          clearTimeout(this.renderGroupsTimeout);
-          this.renderGroupsTimeout = null;
-        }
-      };
-    });
+  protected async fetchItems() {
+    return (await fetcher.get<{ groups: Group[] }>("/groups?with_rules=true"))?.groups ?? [];
   }
 
-  destroy() {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("keydown", this.handleSaveShortcut);
-    }
+  protected persist(groups: Group[]) {
+    return fetcher.put("/groups?save=true", { groups });
+  }
 
-    if (this.#dispose) {
-      this.#dispose();
-      this.#dispose = null;
+  protected afterLoad() {
+    this.refreshDuplicateRuleIds();
+  }
+
+  protected onSearchCleared() {
+    this.#cancelSearchIndexBuild();
+    this.#clearSearchMatches();
+  }
+
+  protected onSearchQueued() {
+    if (this.searchIndexRevision !== this.dataRevision) {
+      this.#startSearchIndexBuild();
     }
   }
 
-  mount = async () => {
-    this.finishedGroupsCount = 0;
-    this.fetchError = false;
-    try {
-      const fetched =
-        (await fetcher.get<{ groups: Group[] }>("/groups?with_rules=true"))?.groups ?? [];
-      this.tracker = new ChangeTracker(fetched);
-      this.dataRevision = 0;
-      if (typeof window !== "undefined") {
-        setTimeout(() => this.checkRulesValidityState(), 10);
-      }
-    } catch (error) {
-      this.fetchError = true;
-      console.error("Failed to load groups:", error);
-    } finally {
-      this.refreshDuplicateRuleIds();
-      this.dataLoaded = true;
-    }
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("keydown", this.handleSaveShortcut);
-    }
-  };
-
-  handleSaveShortcut = (event: KeyboardEvent) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-      if (this.canSave) {
-        event.preventDefault();
-        this.saveChanges();
-      }
-    }
-  };
-
-  forceVisibleGroup(groupId: string) {
-    if (!this.normalizedSearch) return;
-    this.#forcedGroupIds.add(groupId);
-    this.#forcedSearchKey = this.normalizedSearch;
+  protected onDataRevision() {
+    this.scheduleDuplicateRuleIdsRefresh();
   }
 
-  forceVisibleRule(groupId: string, ruleId: string) {
-    if (!this.normalizedSearch) return;
-    let forced = this.#forcedRuleIdsByGroup.get(groupId);
-    if (!forced) {
-      forced = new Set<string>();
-      this.#forcedRuleIdsByGroup.set(groupId, forced);
+  protected disposeTimers() {
+    if (this.#duplicateRuleIdsTimer) {
+      clearTimeout(this.#duplicateRuleIdsTimer);
+      this.#duplicateRuleIdsTimer = null;
     }
-    forced.add(ruleId);
-    this.#forcedSearchKey = this.normalizedSearch;
-  }
 
-  removeForcedGroup(groupId: string) {
-    this.#forcedGroupIds.delete(groupId);
-    this.#forcedRuleIdsByGroup.delete(groupId);
-  }
-
-  removeForcedRule(groupId: string, ruleId: string) {
-    const forced = this.#forcedRuleIdsByGroup.get(groupId);
-    if (!forced) return;
-    forced.delete(ruleId);
-    if (!forced.size) this.#forcedRuleIdsByGroup.delete(groupId);
-  }
-
-  moveForcedRule(
-    sourceGroupId: string,
-    targetGroupId: string,
-    ruleId: string,
-    targetRuleId = ruleId,
-  ) {
-    if (sourceGroupId === targetGroupId) return;
-    const forced = this.#forcedRuleIdsByGroup.get(sourceGroupId);
-    if (!forced?.has(ruleId)) return;
-    forced.delete(ruleId);
-    if (!forced.size) this.#forcedRuleIdsByGroup.delete(sourceGroupId);
-    let targetForced = this.#forcedRuleIdsByGroup.get(targetGroupId);
-    if (!targetForced) {
-      targetForced = new Set<string>();
-      this.#forcedRuleIdsByGroup.set(targetGroupId, targetForced);
+    if (this.#highlightedRuleTimer) {
+      clearTimeout(this.#highlightedRuleTimer);
+      this.#highlightedRuleTimer = null;
     }
-    targetForced.add(targetRuleId);
   }
 
   syncRuleDeletion(groupIndex: number, ruleIndex: number) {
     if (!this.searchActive) return;
-    const targetIndex = this.visibleGroups.findIndex((entry) => entry.group_index === groupIndex);
+    const targetIndex = this.visibleItems.findIndex((entry) => entry.group_index === groupIndex);
     if (targetIndex === -1) return;
-    const target = this.visibleGroups[targetIndex];
+    const target = this.visibleItems[targetIndex];
     if (!target?.ruleIndices) return;
 
     const ruleIndices = target.ruleIndices;
@@ -370,22 +169,13 @@ export class GroupsStore {
     }
 
     if (write === 0) {
-      this.visibleGroups.splice(targetIndex, 1);
+      this.visibleItems.splice(targetIndex, 1);
       return;
     }
 
     ruleIndices.length = write;
     target.ruleIndices = ruleIndices;
-    this.visibleGroups[targetIndex] = target;
-  }
-
-  #resetForcedVisibility(searchKey: string) {
-    if (!this.#forcedSearchKey) return;
-    if (this.#forcedSearchKey !== searchKey) {
-      this.#forcedGroupIds.clear();
-      this.#forcedRuleIdsByGroup.clear();
-      this.#forcedSearchKey = "";
-    }
+    this.visibleItems[targetIndex] = target;
   }
 
   #clearSearchMatches() {
@@ -537,13 +327,10 @@ export class GroupsStore {
 
   performSearch() {
     const query = this.normalizedSearch;
-    this.#resetForcedVisibility(query);
+    this.resetForcedVisibility(query);
 
     if (!query) {
-      this.visibleGroups = this.data.map((_, index) => ({
-        group_index: index,
-        ruleIndices: null,
-      }));
+      this.showAllItems();
       this.#clearSearchMatches();
       this.searchPending = false;
       return;
@@ -555,7 +342,7 @@ export class GroupsStore {
       return;
     }
 
-    const nextVisible: VisibleGroup[] = [];
+    const nextVisible: VisibleItem[] = [];
     const matchedGroupIds = new Set<string>();
     const ruleMatchMaskById = new Map<string, number>();
     const searchIndex = this.searchIndex;
@@ -563,7 +350,7 @@ export class GroupsStore {
 
     for (let i = 0; i < len; i++) {
       const indexedGroup = searchIndex[i];
-      const isForcedGroup = this.#forcedGroupIds.has(indexedGroup.id);
+      const isForcedGroup = this.forcedItemIds.has(indexedGroup.id);
       const isGroupMatchedByName = indexedGroup.nameLower.includes(query);
 
       if (isForcedGroup || isGroupMatchedByName) {
@@ -575,7 +362,7 @@ export class GroupsStore {
       }
 
       const matchedRuleIndices: number[] = [];
-      const forcedRules = this.#forcedRuleIdsByGroup.get(indexedGroup.id);
+      const forcedRules = this.forcedRuleIdsByItem.get(indexedGroup.id);
       const rules = indexedGroup.rules;
       const rulesLen = rules.length;
 
@@ -602,36 +389,11 @@ export class GroupsStore {
       }
     }
 
-    this.visibleGroups = nextVisible;
+    this.visibleItems = nextVisible;
     this.searchMatchedGroupIds = matchedGroupIds;
     this.searchRuleMatchMaskById = ruleMatchMaskById;
     this.searchPending = false;
   }
-
-  saveChanges() {
-    this.checkRulesValidityState();
-    if (!this.canSave) return;
-    overlay.show(t("saving changes..."));
-
-    const rawData = $state.snapshot(this.data);
-
-    fetcher
-      .put("/groups?save=true", { groups: rawData })
-      .then(() => {
-        this.tracker.reset(rawData);
-        overlay.hide();
-        toast.success(t("Saved"));
-      })
-      .catch(() => {
-        overlay.hide();
-      });
-  }
-
-  checkRulesValidityState = () => {
-    this.valid_rules = this.data.every((group) =>
-      group.rules.every((rule) => !rule.enable || isValidRule(rule)),
-    );
-  };
 
   #sortDuplicateConflicts(conflicts: GroupDuplicateConflict[]) {
     conflicts.sort((a, b) => {
@@ -898,7 +660,7 @@ export class GroupsStore {
       this.performSearch();
     }
 
-    this.renderGroupsLimit = Math.max(this.renderGroupsLimit, groupIndex + 1);
+    this.renderLimit = Math.max(this.renderLimit, groupIndex + 1);
     this.open_state[groupId] = true;
 
     const nonce = (this.duplicateFocusRequest?.nonce ?? 0) + 1;
@@ -915,11 +677,6 @@ export class GroupsStore {
 
   getDuplicateConflictsForGroup = (groupId: string): GroupDuplicateConflict[] =>
     this.duplicateConflictsByGroup.get(groupId) ?? [];
-
-  markDataRevision = () => {
-    this.dataRevision += 1;
-    this.scheduleDuplicateRuleIdsRefresh();
-  };
 
   async addRuleToGroup(group_index: number, rule: Rule, focus = false) {
     const group = this.data[group_index];
@@ -1017,27 +774,6 @@ export class GroupsStore {
     void animateMove();
   }
 
-  changeGroupIndex(from_index: number, to_index: number, insert: "before" | "after" = "before") {
-    if (from_index === to_index && insert !== "after") return;
-
-    if (from_index < 0 || from_index >= this.data.length) return;
-
-    const group = this.data[from_index];
-    if (!group) return;
-
-    this.data.splice(from_index, 1);
-
-    let target = insert === "after" ? to_index + 1 : to_index;
-
-    if (from_index < target) target -= 1;
-
-    if (target < 0) target = 0;
-    if (target > this.data.length) target = this.data.length;
-
-    this.data.splice(target, 0, group);
-    this.markDataRevision();
-  }
-
   canDropGroup = (source: GroupDragData, target: GroupDropSlotData) => {
     const slot = target.group_index + (target.insert === "after" ? 1 : 0);
     return source.group_index !== slot && source.group_index + 1 !== slot;
@@ -1048,7 +784,7 @@ export class GroupsStore {
     const { group_index: from_index } = source;
     const { group_index: to_index, insert } = target;
     if (from_index === to_index && insert !== "after") return;
-    this.changeGroupIndex(from_index, to_index, insert);
+    this.changeIndex(from_index, to_index, insert);
   };
 
   async addGroup() {
@@ -1123,8 +859,8 @@ export class GroupsStore {
   }
 
   async overwriteGroups(groups: Group[]) {
-    this.finishedGroupsCount = 0;
-    this.renderGroupsLimit = 1;
+    this.finishedCount = 0;
+    this.renderLimit = 1;
     this.data.splice(0, this.data.length);
     this.open_state = {};
     await this.addGroups(groups);
@@ -1146,25 +882,5 @@ export class GroupsStore {
     await new Promise<void>((resolve) => {
       window.setTimeout(resolve, 0);
     });
-  }
-
-  handleGroupFinished = () => {
-    this.finishedGroupsCount += 1;
-  };
-
-  scheduleGroupsNext() {
-    if (typeof window === "undefined") return;
-    if (this.renderGroupsTimeout) return;
-    if (this.renderGroupsLimit >= this.data.length) return;
-
-    this.renderGroupsTimeout = window.setTimeout(() => {
-      this.renderGroupsTimeout = null;
-      if (this.searchActive) {
-        this.renderGroupsLimit = this.data.length;
-        return;
-      }
-      this.renderGroupsLimit = Math.min(this.renderGroupsLimit + 2, this.data.length);
-      this.scheduleGroupsNext();
-    }, 15);
   }
 }

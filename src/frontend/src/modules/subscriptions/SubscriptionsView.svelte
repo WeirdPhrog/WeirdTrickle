@@ -94,7 +94,7 @@
     <Placeholder variant="loading" minHeight="auto">
       {t("Loading subscriptions...")}
     </Placeholder>
-  {:else if store.noVisibleSubscriptions}
+  {:else if store.noVisibleItems}
     <Placeholder variant="empty" minHeight="auto">
       {t("No matches found")}
     </Placeholder>
@@ -115,12 +115,12 @@
     oninput={store.markDataRevision}
     onchange={store.markDataRevision}
   >
-    {#each store.data.slice(0, store.renderSubscriptionsLimit) as sub, sub_index (sub.id)}
+    {#each store.data.slice(0, store.renderLimit) as sub, sub_index (sub.id)}
       {@const isVisible = !store.searchActive || store.visibilityMap.has(sub_index)}
 
       <div class="subscription-wrapper" class:is-hidden={!isVisible}>
         <div class="subscription-wrapper-inner">
-          {#if sub_index === store.firstVisibleSubscriptionIndex}
+          {#if sub_index === store.firstVisibleIndex}
             <div
               class="subscription-drop-slot subscription-drop-slot--top"
               aria-hidden="true"
