@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.1.4] — 2026-10-19
+
+Выпуск не меняет маршрутизацию, HTTP API и формат `config.yaml`. Кроме удалённой анимации снега, все изменения внутренние: код сокращён примерно на 1100 строк, и каждый этап перед слиянием прошёл полный набор проверок CI.
+
 ### Удалено
 
 - Сезонная анимация снега в веб-интерфейсе вместе с цепочкой событий `onRenderComplete`, которая существовала только для неё.
@@ -166,7 +170,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.3...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.4...develop
+[2.1.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.0...v2.1.2
 [2.1.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.0...v2.1.1
