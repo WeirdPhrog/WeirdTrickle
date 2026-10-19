@@ -38,6 +38,31 @@ restore_config() {
     fi
 }
 
+rotate_backups() (
+    # Reserve a slot for the new backup, even if the router clock moved back.
+    newest=${1:-}
+    keep=2
+    [ -z "$newest" ] || keep=1
+    set --
+    for archive in /opt/var/backups/magitrickle/before-*.tar.gz; do
+        if [ "$archive" = "$newest" ] || [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            continue
+        fi
+        # Only installer-generated names; no unrelated files or line breaks.
+        printf '%s\n' "${archive##*/}" | LC_ALL=C grep -Eq '^before-[0-9]+(\.[0-9]+){2,3}-[0-9]{8}T[0-9]{6}Z-[0-9]+\.tar\.gz$' || continue
+        set -- "$@" "$archive"
+    done
+    [ "$#" -gt "$keep" ] || return 0
+    LC_ALL=C ls -1t "$@" > "$mt_tmp/backup-list" || die 'Cannot list configuration backups.'
+    kept=0
+    while IFS= read -r archive; do
+        kept=$((kept + 1))
+        if [ "$kept" -gt "$keep" ]; then
+            rm -f "$archive" || die 'Cannot rotate configuration backups.'
+        fi
+    done < "$mt_tmp/backup-list"
+)
+
 main() {
     PATH=/opt/bin:/opt/sbin:$PATH
     export PATH
@@ -57,7 +82,8 @@ main() {
     select_target
     mt_tmp=$(mktemp -d /tmp/magitrickle-update.XXXXXX)
     mt_locked=false
-    trap 'rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /tmp/magitrickle-update.lock; fi' EXIT
+    mt_backup_pending=
+    trap 'if [ -n "$mt_backup_pending" ]; then rm -f "$mt_backup_pending" || :; fi; rm -rf "$mt_tmp"; if [ "$mt_locked" = true ]; then rmdir /tmp/magitrickle-update.lock; fi' EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
     base=https://github.com/WeirdPhrog/WeirdTrickle/releases
@@ -84,10 +110,6 @@ main() {
         printf 'Installed package is not identified as WeirdTrickle; migration is required.\n'
     fi
     [ "$check_only" = false ] || return 0
-    if [ "$installed" = "$version-1" ] && [ "$installed_fork" = true ]; then
-        printf 'Already up to date.\n'
-        return 0
-    fi
     if [ -n "$installed" ] && [ "$explicit_version" = false ] && "$opkg" compare-versions "$installed" '>' "$version-1"; then
         if printf '%s\n' "$installed" | grep -Eq "^${legacy_version}-[0-9]+$"; then
             printf 'Migrating from calendar versions to WeirdTrickle %s; configuration will be preserved.\n' "$version"
@@ -98,6 +120,13 @@ main() {
     # /tmp is cleared on reboot; a power loss must not leave a permanent lock.
     mkdir /tmp/magitrickle-update.lock 2>/dev/null || die 'Another update is running (lock: /tmp/magitrickle-update.lock).'
     mt_locked=true
+    mt_backup_pending=/opt/var/backups/magitrickle/.backup.incomplete
+    rm -f "$mt_backup_pending"
+    rotate_backups
+    if [ "$installed" = "$version-1" ] && [ "$installed_fork" = true ]; then
+        printf 'Already up to date.\n'
+        return 0
+    fi
     # Pin both downloads to the same immutable release, even if latest changes.
     download "$release/SHA256SUMS" "$mt_tmp/SHA256SUMS" || die 'Cannot download release checksums.'
     checksum=$(awk -v file="$package" '$2 == file { print $1 }' "$mt_tmp/SHA256SUMS")
@@ -113,7 +142,10 @@ main() {
     if [ "$#" -gt 0 ]; then
         mkdir -p /opt/var/backups/magitrickle
         backup="/opt/var/backups/magitrickle/before-${version}-$(date -u +%Y%m%dT%H%M%SZ)-$$.tar.gz"
-        (umask 077; tar -czf "$backup" -C /opt "$@")
+        (umask 077; tar -czf "$mt_backup_pending" -C /opt "$@")
+        mv "$mt_backup_pending" "$backup"
+        mt_backup_pending=
+        rotate_backups "$backup"
         printf 'Configuration backup: %s\n' "$backup"
     fi
     if [ -f /opt/var/lib/magitrickle/config.yaml ]; then
