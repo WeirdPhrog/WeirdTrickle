@@ -54,13 +54,7 @@ type AddSubscriptionPayload = {
   interval: number;
 };
 
-type SubscriptionsStoreOptions = {
-  onRenderComplete?: () => void;
-};
-
 export class SubscriptionsStore {
-  onRenderComplete?: () => void;
-
   tracker = $state(new ChangeTracker<Subscription[]>([]));
   data = $derived.by(() => this.tracker.data);
   dataRevision = $state(0);
@@ -147,8 +141,7 @@ export class SubscriptionsStore {
   #debounceTimer: number | null = null;
   #dispose: (() => void) | null = null;
 
-  constructor(options: SubscriptionsStoreOptions = {}) {
-    this.onRenderComplete = options.onRenderComplete;
+  constructor() {
     this.#setupEffects();
   }
 
@@ -216,12 +209,6 @@ export class SubscriptionsStore {
       $effect(() => {
         this.data.length;
         this.scheduleSubscriptionsNext();
-      });
-
-      $effect(() => {
-        if (this.isAllRendered) {
-          this.onRenderComplete?.();
-        }
       });
 
       return () => {

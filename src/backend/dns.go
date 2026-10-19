@@ -293,12 +293,6 @@ func (a *App) processDNSAddress(header dns.RR_Header, ip net.IP, idStr, client, 
 	return a.routeDNSAddress(a.recordsCache.GetAliases(name), ip, ttl)
 }
 
-func (a *App) processCNameRecord(record dns.CNAME, idStr, client, network string) error {
-	name := trimFQDN(record.Hdr.Name)
-	a.recordsCache.AddAlias(name, trimFQDN(record.Target), routingTTL(record.Hdr.Ttl, a.Config().Netfilter.IPSet.AdditionalTTL))
-	return a.routeCachedAddresses(name)
-}
-
 func (a *App) routeCachedAddresses(name string) error {
 	names := a.recordsCache.GetAliases(name)
 	var errs []error

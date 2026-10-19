@@ -22,13 +22,7 @@
   import { copyRulePatternsToClipboard } from "../../utils/copy-rule-patterns";
   import { toast } from "../../utils/events";
 
-  type Props = {
-    onRenderComplete?: () => void;
-  };
-
-  let { onRenderComplete }: Props = $props();
-
-  const store = new GroupsStore({ onRenderComplete: () => onRenderComplete?.() });
+  const store = new GroupsStore();
   setContext(GROUPS_STORE_CONTEXT, store);
 
   let selectedIds = $state<string[]>([]);

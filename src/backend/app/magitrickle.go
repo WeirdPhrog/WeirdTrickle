@@ -7,9 +7,6 @@ import (
 
 	"magitrickle/models"
 	"magitrickle/utils/intID"
-	"magitrickle/utils/netfilterTools"
-
-	"github.com/vishvananda/netlink"
 )
 
 var (
@@ -27,47 +24,28 @@ type SubscriptionSyncResult struct {
 	Rules      []*models.SubscriptionRule
 }
 
+// Main is the application surface used by the HTTP and Unix-socket API.
 type Main interface {
 	Config() models.AppConfig
 	RoutingStatus() []models.RoutingRestoreStatus
 	UserGroups() []RuleSet
-	ClearGroups()
 	AddGroup(groupModel *models.Group) error
-	UpdateGroup(groupModel *models.Group) error
 	UpdateGroupIfCurrent(groupModel, expected *models.Group) error
 	ReplaceGroups(groups []*models.Group) error
-	RemoveGroupByIndex(idx int)
 	RemoveGroupByID(id intID.ID) (bool, error)
-	SyncSubscriptionRuleSets() error
 	WithSubscriptions(fn func([]*models.Subscription))
 	ReplaceSubscriptions(subscriptions []*models.Subscription) error
 	AddSubscription(subscription *models.Subscription) error
 	RemoveSubscriptionByID(id intID.ID) (bool, error)
-	SyncSubscriptionByID(id intID.ID, now time.Time, urlOverride string) (result SubscriptionSyncResult, changed bool, err error)
 	SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now time.Time, urlOverride string) (result SubscriptionSyncResult, changed bool, err error)
 	FetchSubscriptionList(ctx context.Context, url string) (string, error)
 	SetSubscriptionFetchInterface(name string) error
-	SyncDueSubscriptions(now time.Time) (bool, error)
 	ListInterfaces() ([]models.InterfaceInfo, error)
-	DnsOverrider() *netfilterTools.PortRemap
-	LoadConfig() error
 	SaveConfig() error
 	ForceCommitIPTables() error
-	Start(ctx context.Context) (err error)
 }
 
+// RuleSet is the read-only view of a user group exposed to the API.
 type RuleSet interface {
-	Enabled() bool
 	Model() *models.Group
-	AddIPv4Subnet(subnet netfilterTools.IPv4Subnet, ttl netfilterTools.IPSetTimeout) error
-	AddIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterTools.IPSetTimeout) error
-	DelIPv4Subnet(subnet netfilterTools.IPv4Subnet) error
-	DelIPv6Subnet(subnet netfilterTools.IPv6Subnet) error
-	ListIPv4Subnets() (map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout, error)
-	ListIPv6Subnets() (map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout, error)
-	Enable() error
-	Disable() error
-	Sync() error
-	LinkUpHook(event netlink.LinkUpdate) error
-	AddrChangeHook(event netlink.AddrUpdate) error
 }

@@ -38,10 +38,6 @@ func validateGroups(groups []*models.Group) error {
 	return nil
 }
 
-func (a *App) UpdateGroup(model *models.Group) error {
-	return a.updateGroup(model, nil)
-}
-
 // API rule operations derive their edits from an immutable request snapshot.
 // Reject a stale snapshot rather than silently discarding another request's edit.
 func (a *App) UpdateGroupIfCurrent(model, expected *models.Group) error {

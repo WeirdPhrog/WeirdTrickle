@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -93,17 +94,6 @@ func (a *App) UserGroups() []app.RuleSet {
 	return list
 }
 
-// ClearGroups отключает все группы и очищает список
-func (a *App) ClearGroups() {
-	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
-	defer a.publishDNSRulesLocked(nil)
-	for _, g := range a.userRuleSets {
-		_ = g.Disable()
-	}
-	a.userRuleSets = nil
-}
-
 // AddGroup добавляет новую группу
 func (a *App) AddGroup(groupModel *models.Group) error {
 	a.stateMu.Lock()
@@ -120,10 +110,7 @@ func (a *App) addGroupLocked(groupModel *models.Group) error {
 			return ErrGroupIDConflict
 		}
 	}
-	grp, err := NewRuleSet(groupruntime.BuildRuntimeRuleSet(groupModel), a)
-	if err != nil {
-		return fmt.Errorf("failed to create group: %w", err)
-	}
+	grp := newRuleSet(groupruntime.BuildRuntimeRuleSet(groupModel), a)
 	a.userRuleSets = append(a.userRuleSets, grp)
 	a.publishDNSRulesLocked(nil)
 	defer a.publishDNSRulesLocked(nil)
@@ -138,26 +125,12 @@ func (a *App) addGroupLocked(groupModel *models.Group) error {
 
 	// если приложение уже запущено – включаем группу и выполняем синхронизацию
 	if a.enabled.Load() {
-		if err = grp.Enable(); err != nil {
+		if err := grp.Enable(); err != nil {
 			removeAdded()
 			return fmt.Errorf("failed to enable group: %w", err)
 		}
 	}
 	return nil
-}
-
-// RemoveGroupByIndex удаляет группу по индексу
-func (a *App) RemoveGroupByIndex(idx int) {
-	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
-	defer a.publishDNSRulesLocked(nil)
-	if idx < 0 || idx >= len(a.userRuleSets) {
-		return
-	}
-	if err := a.userRuleSets[idx].Disable(); err != nil {
-		return
-	}
-	a.userRuleSets = append(a.userRuleSets[:idx], a.userRuleSets[idx+1:]...)
 }
 
 // RemoveGroupByID removes a group by ID.
@@ -194,9 +167,14 @@ func (a *App) ReplaceSubscriptions(subscriptions []*models.Subscription) error {
 
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
+	return a.setSubscriptionsLocked(subscriptions)
+}
 
+// Caller holds subscriptionSyncMu and stateMu. next must not share its backing
+// array with the current list, so the current list remains a valid rollback.
+func (a *App) setSubscriptionsLocked(next []*models.Subscription) error {
 	previous := a.subscriptions
-	a.subscriptions = subscriptions
+	a.subscriptions = next
 	if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
 		a.subscriptions = previous
 		if rollbackErr := a.syncSubscriptionRuleSetsLocked(); rollbackErr != nil {
@@ -220,15 +198,7 @@ func (a *App) AddSubscription(subscription *models.Subscription) error {
 			return app.ErrSubscriptionConflict
 		}
 	}
-	a.subscriptions = append(a.subscriptions, subscription)
-	if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
-		a.subscriptions = a.subscriptions[:len(a.subscriptions)-1]
-		if rollbackErr := a.syncSubscriptionRuleSetsLocked(); rollbackErr != nil {
-			return errors.Join(err, fmt.Errorf("failed to rollback subscriptions: %w", rollbackErr))
-		}
-		return err
-	}
-	return nil
+	return a.setSubscriptionsLocked(append(slices.Clip(a.subscriptions), subscription))
 }
 
 // RemoveSubscriptionByID removes a subscription by ID.
@@ -241,13 +211,7 @@ func (a *App) RemoveSubscriptionByID(id intID.ID) (bool, error) {
 
 	for idx, sub := range a.subscriptions {
 		if sub.ID == id {
-			removed := sub
-			a.subscriptions = append(a.subscriptions[:idx], a.subscriptions[idx+1:]...)
-			if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
-				a.subscriptions = append(a.subscriptions[:idx], append([]*models.Subscription{removed}, a.subscriptions[idx:]...)...)
-				if rollbackErr := a.syncSubscriptionRuleSetsLocked(); rollbackErr != nil {
-					return true, errors.Join(err, fmt.Errorf("failed to rollback subscriptions: %w", rollbackErr))
-				}
+			if err := a.setSubscriptionsLocked(slices.Delete(slices.Clone(a.subscriptions), idx, idx+1)); err != nil {
 				return true, err
 			}
 			delete(a.subscriptionRetries, id)
@@ -260,11 +224,6 @@ func (a *App) RemoveSubscriptionByID(id intID.ID) (bool, error) {
 // ListInterfaces возвращает список сетевых интерфейсов, доступных для выбора в UI.
 func (a *App) ListInterfaces() ([]models.InterfaceInfo, error) {
 	return interfaces.List(a.Config().ShowAllInterfaces)
-}
-
-// DnsOverrider возвращает dnsOverrider
-func (a *App) DnsOverrider() *netfilterTools.PortRemap {
-	return a.dnsOverrider
 }
 
 func (a *App) ruleSetSnapshot() []*RuleSet {

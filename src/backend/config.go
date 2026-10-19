@@ -20,8 +20,6 @@ import (
 	"go.yaml.in/yaml/v2"
 )
 
-var colorRegExp = regexp.MustCompile(`(?i)^#[0-9a-f]{6}$`)
-
 const cfgFolderLocation = constant.AppStateDir
 const cfgFileLocation = cfgFolderLocation + "/config.yaml"
 
@@ -178,11 +176,7 @@ func (a *App) loadConfig(filename string) (err error) {
 	if cfg.Groups != nil {
 		a.configDNSRules = groupruntime.BuildRuntimeRuleSets(*cfg.Groups)
 		for _, group := range *cfg.Groups {
-			if !colorRegExp.MatchString(group.Color) {
-				group.Color = "#ffffff"
-			} else {
-				group.Color = strings.ToLower(group.Color)
-			}
+			group.Color = models.NormalizeGroupColor(group.Color)
 		}
 	}
 	if cfg.Subscriptions != nil {

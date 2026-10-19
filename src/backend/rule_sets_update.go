@@ -50,11 +50,7 @@ func (a *App) reconcileRuleSets(previous []*RuleSet, specs []rulesets.Spec, subs
 		seen[spec.ID] = true
 		g := existing[spec.ID]
 		if g == nil {
-			var err error
-			g, err = newRuleSet(spec, a)
-			if err != nil {
-				return nil, err
-			}
+			g = newRuleSet(spec, a)
 		}
 		next = append(next, g)
 	}

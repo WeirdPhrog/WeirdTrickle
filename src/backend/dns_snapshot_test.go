@@ -135,10 +135,7 @@ func TestPendingSubscriptionDNSWaitsAndFailsClosedIfRoutingIsNotReady(t *testing
 				{Type: models.RuleTypeDomain, Rule: "old.example", Enable: true},
 			}}
 			if refresh {
-				current, err := NewRuleSet(subscriptions.BuildRuntimeRuleSets([]*models.Subscription{sub})[0], a)
-				if err != nil {
-					t.Fatal(err)
-				}
+				current := newRuleSet(subscriptions.BuildRuntimeRuleSets([]*models.Subscription{sub})[0], a)
 				a.subscriptionRuleSets = []*RuleSet{current}
 			}
 			sub.Rules = []*models.SubscriptionRule{{Type: models.RuleTypeDomain, Rule: "new.example", Enable: true}}
@@ -146,10 +143,7 @@ func TestPendingSubscriptionDNSWaitsAndFailsClosedIfRoutingIsNotReady(t *testing
 			if pending[0].Model != nil || !pending[0].Subscription || !pending[0].Enable {
 				t.Fatal("test must exercise an enabled subscription spec without Model")
 			}
-			next, err := NewRuleSet(pending[0], a)
-			if err != nil {
-				t.Fatal(err)
-			}
+			next := newRuleSet(pending[0], a)
 			// An incomplete runtime must produce SERVFAIL after the update, never
 			// release a usable address just because the pending spec has no Model.
 			next.enabled.Store(true)
@@ -206,7 +200,7 @@ func TestPendingSubscriptionDNSWaitsAndFailsClosedIfRoutingIsNotReady(t *testing
 }
 
 func TestIncompleteRuleSetOnlyFailsMatchingDNSAndDoesNotPanic(t *testing.T) {
-	g, _ := NewRuleSet(rulesets.Spec{Model: &models.Group{Enable: true, Rules: []*models.Rule{
+	g := newRuleSet(rulesets.Spec{Model: &models.Group{Enable: true, Rules: []*models.Rule{
 		{Type: models.RuleTypeDomain, Rule: "vpn.example", Enable: true},
 	}}}, nil)
 	g.enabled.Store(true) // Failed disable: the routing link has already gone.

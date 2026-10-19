@@ -18,10 +18,7 @@ func TestDNSRulesTrackGroupEditsAndExcludeSubnetRules(t *testing.T) {
 		{Type: models.RuleTypeSubnet6, Rule: "2001:db8::/32", Enable: true},
 		{Type: models.RuleTypeNamespace, Rule: "disabled.example", Enable: false},
 	}}
-	g, err := NewRuleSet(rulesets.Spec{Model: group}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := newRuleSet(rulesets.Spec{Model: group}, nil)
 	if got := g.domainRules(); len(got) != 1 || got[0] != domain {
 		t.Fatalf("unexpected DNS rules: %v", got)
 	}
@@ -55,7 +52,7 @@ func TestDNSRulesTrackGroupEditsAndExcludeSubnetRules(t *testing.T) {
 func TestDNSRulesConcurrentModelPublication(t *testing.T) {
 	first := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeDomain, Rule: "first.example", Enable: true}}}
 	second := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeSubnet, Rule: "192.0.2.0/24", Enable: true}}}
-	g, _ := NewRuleSet(rulesets.Spec{Model: first}, nil)
+	g := newRuleSet(rulesets.Spec{Model: first}, nil)
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
@@ -89,7 +86,7 @@ func BenchmarkDNSRuleScan(b *testing.B) {
 			rules[i] = &models.Rule{Type: models.RuleTypeSubnet, Rule: "192.0.2.0/24", Enable: true}
 		}
 		rules[count] = &models.Rule{Type: models.RuleTypeDomain, Rule: "example.com", Enable: true}
-		g, _ := NewRuleSet(rulesets.Spec{Subscription: true, Enable: true, Rules: rules}, nil)
+		g := newRuleSet(rulesets.Spec{Subscription: true, Enable: true, Rules: rules}, nil)
 		for _, filtered := range []bool{false, true} {
 			b.Run(fmt.Sprintf("subnets=%d/filtered=%t", count, filtered), func(b *testing.B) {
 				b.ReportAllocs()

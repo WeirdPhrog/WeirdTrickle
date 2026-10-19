@@ -65,16 +65,6 @@ func (a *App) setSubscriptionFetchInterface(name, filename string) error {
 	return nil
 }
 
-func (a *App) SyncSubscriptionRuleSets() error {
-	a.subscriptionSyncMu.Lock()
-	defer a.subscriptionSyncMu.Unlock()
-
-	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
-
-	return a.syncSubscriptionRuleSetsLocked()
-}
-
 func (a *App) syncSubscriptionRuleSetsLocked() error {
 	for _, sub := range a.subscriptions {
 		if sub == nil {
@@ -92,16 +82,6 @@ func (a *App) syncSubscriptionRuleSetsLocked() error {
 		a.subscriptionRuleSets = next
 	}
 	return err
-}
-
-func disableRuleSets(ruleSets []*RuleSet) error {
-	var errs []error
-	for _, ruleSet := range ruleSets {
-		if err := ruleSet.Disable(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }
 
 func (a *App) StartSubscriptionAutoUpdate(ctx context.Context) {
@@ -126,10 +106,6 @@ func (a *App) StartSubscriptionAutoUpdate(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (a *App) SyncSubscriptionByID(id intID.ID, now time.Time, urlOverride string) (app.SubscriptionSyncResult, bool, error) {
-	return a.SyncSubscriptionByIDContext(context.Background(), id, now, urlOverride)
 }
 
 func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now time.Time, urlOverride string) (app.SubscriptionSyncResult, bool, error) {
@@ -207,10 +183,6 @@ func (a *App) SyncSubscriptionByIDContext(ctx context.Context, id intID.ID, now 
 		LastUpdate: current.LastUpdate,
 		Rules:      current.Rules,
 	}, urlChanged || rulesChanged, nil
-}
-
-func (a *App) SyncDueSubscriptions(now time.Time) (bool, error) {
-	return a.syncDueSubscriptions(context.Background(), now)
 }
 
 func (a *App) syncDueSubscriptions(ctx context.Context, now time.Time) (bool, error) {

@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"regexp"
 	"syscall"
+
+	"magitrickle/models"
 
 	"github.com/rs/zerolog/log"
 )
 
-var fetchInterfacePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,15}$`)
-
 func ValidateFetchInterface(name string) error {
-	// An absent/down interface is allowed: retain the choice across VPN restarts.
-	if name != "" && (!fetchInterfacePattern.MatchString(name) || name == "." || name == "..") {
+	if !models.IsValidInterfaceName(name) {
 		return fmt.Errorf("invalid subscription fetch interface")
 	}
 	return nil

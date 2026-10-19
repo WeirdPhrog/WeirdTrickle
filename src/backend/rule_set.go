@@ -40,17 +40,13 @@ func (g *RuleSet) Enabled() bool {
 	return g.enabled.Load()
 }
 
-func newRuleSet(spec rulesets.Spec, app *App) (*RuleSet, error) {
+func newRuleSet(spec rulesets.Spec, app *App) *RuleSet {
 	g := &RuleSet{
 		spec: spec,
 		app:  app,
 	}
 	g.storeModel(spec.Model)
-	return g, nil
-}
-
-func NewRuleSet(spec rulesets.Spec, app *App) (*RuleSet, error) {
-	return newRuleSet(spec, app)
+	return g
 }
 
 func (g *RuleSet) Model() *models.Group {
@@ -208,20 +204,6 @@ func (g *RuleSet) addIPv4Subnet(subnet netfilterTools.IPv4Subnet, ttl netfilterT
 	return g.ipset.AddIPv4Subnet(subnet, ttl)
 }
 
-func (g *RuleSet) AddIPv4Subnet(subnet netfilterTools.IPv4Subnet, ttl netfilterTools.IPSetTimeout) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil
-	}
-
-	return g.addIPv4Subnet(subnet, ttl)
-}
-
 func (g *RuleSet) addIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterTools.IPSetTimeout) error {
 	if subnet.CIDR == 0 {
 		subnet.CIDR = 128
@@ -230,92 +212,6 @@ func (g *RuleSet) addIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterT
 		ttl = nil
 	}
 	return g.ipset.AddIPv6Subnet(subnet, ttl)
-}
-
-func (g *RuleSet) AddIPv6Subnet(subnet netfilterTools.IPv6Subnet, ttl netfilterTools.IPSetTimeout) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil
-	}
-
-	return g.addIPv6Subnet(subnet, ttl)
-}
-
-func (g *RuleSet) delIPv4Subnet(subnet netfilterTools.IPv4Subnet) error {
-	return g.ipset.DelIPv4Subnet(subnet)
-}
-
-func (g *RuleSet) DelIPv4Subnet(subnet netfilterTools.IPv4Subnet) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil
-	}
-
-	return g.delIPv4Subnet(subnet)
-}
-
-func (g *RuleSet) delIPv6Subnet(subnet netfilterTools.IPv6Subnet) error {
-	return g.ipset.DelIPv6Subnet(subnet)
-}
-
-func (g *RuleSet) DelIPv6Subnet(subnet netfilterTools.IPv6Subnet) error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil
-	}
-
-	return g.delIPv6Subnet(subnet)
-}
-
-func (g *RuleSet) listIPv4Subnets() (map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout, error) {
-	return g.ipset.ListIPv4Subnets()
-}
-
-func (g *RuleSet) ListIPv4Subnets() (map[netfilterTools.IPv4Subnet]netfilterTools.IPSetTimeout, error) {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil, nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil, nil
-	}
-
-	return g.listIPv4Subnets()
-}
-
-func (g *RuleSet) listIPv6Subnets() (map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout, error) {
-	return g.ipset.ListIPv6Subnets()
-}
-
-func (g *RuleSet) ListIPv6Subnets() (map[netfilterTools.IPv6Subnet]netfilterTools.IPSetTimeout, error) {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-	if !g.Enabled() {
-		return nil, nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil, nil
-	}
-
-	return g.listIPv6Subnets()
 }
 
 func (g *RuleSet) enable() error {
@@ -628,53 +524,26 @@ func (g *RuleSet) retryRestore(now time.Time) error {
 	return g.restoreRuntimeLocked(g.Model())
 }
 
-func (g *RuleSet) Sync() error {
-	g.locker.Lock()
-	defer g.locker.Unlock()
-
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
-		return nil
-	}
-
-	return g.sync()
-}
-
 func (g *RuleSet) LinkUpHook(event netlink.LinkUpdate) error {
 	g.locker.Lock()
 	defer g.locker.Unlock()
-
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
+	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return nil
 	}
 	if g.ipsetToLink == nil {
 		return fmt.Errorf("routing is not ready")
 	}
-
 	return g.ipsetToLink.LinkUpHook(event)
 }
 
 func (g *RuleSet) AddrChangeHook(event netlink.AddrUpdate) error {
 	g.locker.Lock()
 	defer g.locker.Unlock()
-
-	if !g.Enabled() {
-		return nil
-	}
-
-	if !g.ConfiguredEnabled() {
+	if !g.Enabled() || !g.ConfiguredEnabled() {
 		return nil
 	}
 	if g.ipsetToLink == nil {
 		return fmt.Errorf("routing is not ready")
 	}
-
 	return g.ipsetToLink.AddrChangeHook(event)
 }

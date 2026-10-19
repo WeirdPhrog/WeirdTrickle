@@ -92,13 +92,7 @@ type SearchHighlightSegment = {
   matched: boolean;
 };
 
-type GroupsStoreOptions = {
-  onRenderComplete?: () => void;
-};
-
 export class GroupsStore {
-  onRenderComplete?: () => void;
-
   tracker = $state(new ChangeTracker<Group[]>([]));
   data = $derived.by(() => this.tracker.data);
   dataRevision = $state(0);
@@ -167,8 +161,7 @@ export class GroupsStore {
   #searchIndexBuilding = false;
   #dispose: (() => void) | null = null;
 
-  constructor(options: GroupsStoreOptions = {}) {
-    this.onRenderComplete = options.onRenderComplete;
+  constructor() {
     this.#setupEffects();
   }
 
@@ -242,12 +235,6 @@ export class GroupsStore {
       $effect(() => {
         this.data.length;
         this.scheduleGroupsNext();
-      });
-
-      $effect(() => {
-        if (this.isAllRendered) {
-          this.onRenderComplete?.();
-        }
       });
 
       return () => {

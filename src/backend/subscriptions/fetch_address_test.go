@@ -38,7 +38,7 @@ func TestFetchRejectsLocalTargetsBeforeSendingHTTPRequest(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, target := range []string{server.URL, strings.Replace(server.URL, "127.0.0.1", "localhost", 1)} {
-		body, err := FetchList(target + "/?token=PRIVATE_TOKEN")
+		body, err := FetchListWithInterface(context.Background(), target+"/?token=PRIVATE_TOKEN", "")
 		if !errors.Is(err, errForbiddenFetchAddress) || body != "" || strings.Contains(err.Error(), "PRIVATE_TOKEN") {
 			t.Fatalf("local fetch: body=%q err=%v", body, err)
 		}

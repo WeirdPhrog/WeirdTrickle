@@ -10,7 +10,6 @@
   import Overlay from "../feedback/Overlay.svelte";
   import RoutingWarning from "../feedback/RoutingWarning.svelte";
   import ScrollToTop from "../feedback/ScrollToTop.svelte";
-  import SnowField from "../feedback/SnowField.svelte";
   import Toast from "../feedback/Toast.svelte";
   import HeaderSettings from "./HeaderSettings.svelte";
 
@@ -19,9 +18,6 @@
   const lastActiveTab = persistedState("active_tab", "groups");
   let active_tab = $state(lastActiveTab.current);
   let isMenuOpen = $state(false);
-  let isRenderCompleteGroups = $state(false);
-  let isRenderCompleteSubscriptions = $state(false);
-  let isRenderComplete = $derived(isRenderCompleteGroups && isRenderCompleteSubscriptions);
 
   $effect(() => {
     lastActiveTab.current = active_tab;
@@ -59,9 +55,6 @@
 <Toast />
 <Overlay />
 <ScrollToTop />
-{#if [11, 0, 1].includes(new Date().getMonth())}
-  <SnowField visible={isRenderComplete} />
-{/if}
 
 <main>
   <Tabs.Root bind:value={active_tab}>
@@ -108,10 +101,10 @@
     <article>
       <RoutingWarning />
       <Tabs.Content value="groups">
-        <GroupsView onRenderComplete={() => (isRenderCompleteGroups = true)} />
+        <GroupsView />
       </Tabs.Content>
       <Tabs.Content value="subscriptions">
-        <SubscriptionsView onRenderComplete={() => (isRenderCompleteSubscriptions = true)} />
+        <SubscriptionsView />
       </Tabs.Content>
       <!-- <Tabs.Content value="settings">...</Tabs.Content> -->
     </article>

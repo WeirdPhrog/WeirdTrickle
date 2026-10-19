@@ -13,8 +13,8 @@ import (
 
 func TestRoutingRestoreBackoffAndStatusSnapshots(t *testing.T) {
 	a := &App{}
-	g, _ := NewRuleSet(rulesets.Spec{ID: intID.ID{1}, Name: "VPN group", Enable: true}, a)
-	sub, _ := NewRuleSet(rulesets.Spec{ID: intID.ID{1}, Name: "ASN subscription", Enable: true, Subscription: true}, a)
+	g := newRuleSet(rulesets.Spec{ID: intID.ID{1}, Name: "VPN group", Enable: true}, a)
+	sub := newRuleSet(rulesets.Spec{ID: intID.ID{1}, Name: "ASN subscription", Enable: true, Subscription: true}, a)
 	a.userRuleSets, a.subscriptionRuleSets = []*RuleSet{g}, []*RuleSet{sub}
 	now := time.Unix(1800000000, 0)
 	for _, delay := range []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 15 * time.Minute, 15 * time.Minute} {
@@ -69,7 +69,7 @@ func TestHealthyRoutingMaintenanceDoesNotAcquireStateLock(t *testing.T) {
 }
 
 func TestPendingRecoveryWaitsWithoutLockingRuleSet(t *testing.T) {
-	g, _ := NewRuleSet(rulesets.Spec{Model: &models.Group{Enable: true}}, &App{})
+	g := newRuleSet(rulesets.Spec{Model: &models.Group{Enable: true}}, &App{})
 	now := time.Now()
 	g.recordRestoreFailure(errors.New("kernel busy"), now)
 	g.locker.Lock()

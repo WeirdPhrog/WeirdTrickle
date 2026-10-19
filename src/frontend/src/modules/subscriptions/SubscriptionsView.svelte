@@ -21,10 +21,6 @@
   import type { SubscriptionRule } from "../../types";
   import { copyRulePatternsToClipboard } from "../../utils/copy-rule-patterns";
 
-  type Props = {
-    onRenderComplete?: () => void;
-  };
-
   type AddSubscriptionEvent = {
     url: string;
     name: string;
@@ -33,9 +29,7 @@
     interval: number;
   };
 
-  let { onRenderComplete }: Props = $props();
-
-  const store = new SubscriptionsStore({ onRenderComplete: () => onRenderComplete?.() });
+  const store = new SubscriptionsStore();
   setContext(SUBSCRIPTIONS_STORE_CONTEXT, store);
 
   let selectedIds = $state<string[]>([]);

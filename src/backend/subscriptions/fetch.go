@@ -14,14 +14,6 @@ const fetchTimeout = 15 * time.Second
 const maxFetchRedirects = 5
 const maxListBytes = 16 << 20
 
-func FetchList(rawURL string) (string, error) {
-	return FetchListContext(context.Background(), rawURL)
-}
-
-func FetchListContext(ctx context.Context, rawURL string) (string, error) {
-	return FetchListWithInterface(ctx, rawURL, "")
-}
-
 // FetchListWithInterface retries the original URL via the system route if the
 // preferred interface fails. A failed attempt never returns a partial list.
 func FetchListWithInterface(ctx context.Context, rawURL, interfaceName string) (string, error) {
@@ -42,10 +34,6 @@ func fetchListWithPolicy(ctx context.Context, rawURL, interfaceName string, chec
 	return fetchWithFallback(ctx, interfaceName, func(ctx context.Context, name string) (string, error) {
 		return fetchListAttemptWithPolicy(ctx, rawURL, name, check)
 	})
-}
-
-func fetchListAttempt(ctx context.Context, rawURL, interfaceName string) (string, error) {
-	return fetchListAttemptWithPolicy(ctx, rawURL, interfaceName, checkFetchAddress)
 }
 
 func fetchListAttemptWithPolicy(ctx context.Context, rawURL, interfaceName string, check fetchAddressPolicy) (string, error) {

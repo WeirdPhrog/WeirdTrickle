@@ -5,12 +5,11 @@ import (
 
 	"magitrickle/api/v1/types"
 	"magitrickle/models"
-	"magitrickle/subscriptions"
 	"magitrickle/utils/intID"
 )
 
 func SubscriptionFromReq(req types.SubscriptionReq, existing *models.Subscription) (*models.Subscription, error) {
-	if err := subscriptions.ValidateFetchInterface(req.Interface); err != nil {
+	if !models.IsValidInterfaceName(req.Interface) {
 		return nil, fmt.Errorf("invalid routing interface")
 	}
 	sub := &models.Subscription{Enable: true}

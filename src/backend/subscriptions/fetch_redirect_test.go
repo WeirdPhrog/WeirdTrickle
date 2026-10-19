@@ -30,7 +30,7 @@ func TestFetchAllStandardRedirects(t *testing.T) {
 func TestFetchCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := FetchListContext(ctx, "http://127.0.0.1:1/list"); err == nil {
+	if _, err := FetchListWithInterface(ctx, "http://127.0.0.1:1/list", ""); err == nil {
 		t.Fatal("cancelled fetch succeeded")
 	}
 }

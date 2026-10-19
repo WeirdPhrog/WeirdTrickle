@@ -85,7 +85,7 @@ func TestRealSubscriptionFetch(t *testing.T) {
 	} {
 		url := "http://" + family.host + ":18080/redirect"
 		for _, path := range []struct{ name, source string }{{"", family.wan}, {"mt-vpn", family.vpn}} {
-			body, err := fetchListAttempt(ctx, url, path.name)
+			body, err := fetchListAttemptWithPolicy(ctx, url, path.name, checkFetchAddress)
 			if err != nil || body != path.source {
 				t.Fatalf("%s via %q: body=%q err=%v", url, path.name, body, err)
 			}
