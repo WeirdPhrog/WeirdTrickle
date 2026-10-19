@@ -13,10 +13,11 @@ type AppConfig struct {
 }
 
 type AppConfigHTTPWeb struct {
-	Enabled bool
-	Auth    AppConfigAuth
-	Host    AppConfigHTTPWebServer
-	Skin    string
+	Enabled      bool
+	Auth         AppConfigAuth
+	Host         AppConfigHTTPWebServer
+	Skin         string
+	AllowedHosts []string
 }
 
 type AppConfigAuth struct {

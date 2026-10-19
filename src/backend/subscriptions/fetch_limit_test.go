@@ -35,7 +35,7 @@ func TestFetchRejectsOversizedListsWithoutReturningPartialData(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			body, err := FetchList(server.URL)
+			body, err := fetchTestList(server.URL)
 			if err == nil || !strings.Contains(err.Error(), "16 MiB") || body != "" {
 				t.Fatalf("body length=%d err=%v", len(body), err)
 			}

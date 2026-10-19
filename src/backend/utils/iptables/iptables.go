@@ -226,7 +226,20 @@ func (ipt *IPTables) Commit() (err error) {
 		}
 		logEvent.Dur("elapsed_ms", elapsed).Str("type", iptType).Bytes("buf", buf.Bytes()).Msg("iptables commit")
 	}()
+	// Re-read and recompile after contention: another process may have changed
+	// rules while we waited. Old Keenetic restore binaries do not support -w.
+	for attempt := 0; attempt < 3; attempt++ {
+		buf.Reset()
+		err = ipt.commitAttempt(buf)
+		if err == nil || !isLockFailure(err) || attempt == 2 {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
+	return err
+}
 
+func (ipt *IPTables) commitAttempt(buf *bytes.Buffer) error {
 	curRules, err := ipt.GetCurrentRules()
 	if err != nil {
 		return err

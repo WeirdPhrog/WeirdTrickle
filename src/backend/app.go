@@ -1,6 +1,7 @@
 package magitrickle
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	groupruntime "magitrickle/groups"
 	"magitrickle/internal/interfaces"
 	"magitrickle/models"
+	"magitrickle/rulesets"
 	"magitrickle/utils/dnsMITMProxy"
 	"magitrickle/utils/intID"
 	"magitrickle/utils/netfilterTools"
@@ -33,6 +35,7 @@ type App struct {
 	config                 models.AppConfig
 	configSnapshot         atomic.Pointer[models.AppConfig]
 	dnsRules               atomic.Pointer[dnsRuleSnapshot]
+	configDNSRules         []rulesets.Spec // stateMu: pending full-config transaction
 	routingRestoresPending atomic.Bool
 	stateMu                sync.RWMutex
 	configFileMu           sync.Mutex
@@ -40,6 +43,7 @@ type App struct {
 
 	subscriptionSyncMu  sync.Mutex
 	subscriptionRetries map[intID.ID]subscriptionRetry
+	subscriptionFetch   func(context.Context, string, string) (string, error) // immutable dependency; nil uses the protected HTTP downloader
 
 	dnsMITM              *dnsMITMProxy.DNSMITMProxy
 	nfHelper             *netfilterTools.Helper

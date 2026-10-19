@@ -96,7 +96,7 @@ func RefreshRules(list string, existing []*models.SubscriptionRule) ([]*models.S
 			// one silently could disable previously effective routing.
 			fallback := detectSubscriptionRuleType(key)
 			if old.Rule != rule.Rule && (savedRuleType(old, fallback) != savedRuleType(rule, fallback) || old.Enable != rule.Enable) {
-				return nil, fmt.Errorf("conflicting overrides for normalized subscription rule %q; retaining the previous rules", key)
+				return nil, fmt.Errorf("conflicting overrides for normalized subscription rule; retaining the previous rules")
 			}
 			continue
 		}

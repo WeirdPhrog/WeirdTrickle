@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,74 @@ type PortRemap struct {
 	from      uint16
 	to        uint16
 	nh        *Helper
+}
+
+func normalizeRemapAddresses(addresses []netlink.Addr) []netlink.Addr {
+	byIP := make(map[string]netlink.Addr, len(addresses))
+	for _, addr := range addresses {
+		if addr.IPNet == nil {
+			continue
+		}
+		ip := addr.IP.To4()
+		if ip == nil {
+			ip = addr.IP.To16()
+		}
+		if ip == nil {
+			continue
+		}
+		ip = slices.Clone(ip)
+		byIP[ip.String()] = netlink.Addr{IPNet: &net.IPNet{IP: ip, Mask: net.CIDRMask(len(ip)*8, len(ip)*8)}}
+	}
+	next := make([]netlink.Addr, 0, len(byIP))
+	for _, addr := range byIP {
+		next = append(next, addr)
+	}
+	slices.SortFunc(next, func(a, b netlink.Addr) int { return slices.Compare(a.IP, b.IP) })
+	return next
+}
+
+func sameRemapFamily(previous, next []netlink.Addr, proto iptables.Protocol) bool {
+	family := func(addresses []netlink.Addr) []string {
+		var result []string
+		for _, addr := range addresses {
+			if (proto == iptables.ProtocolIPv4 && len(addr.IP) == net.IPv4len) || (proto == iptables.ProtocolIPv6 && len(addr.IP) == net.IPv6len) {
+				result = append(result, addr.IP.String())
+			}
+		}
+		return result
+	}
+	return slices.Equal(family(previous), family(next))
+}
+
+// Replace live DNS destinations without unlinking PREROUTING. If either family
+// fails, restore the previous desired rules so later hook commits cannot publish
+// a partially prepared replacement. The event loop retries failed repairs.
+func (r *PortRemap) UpdateAddresses(addresses []netlink.Addr) error {
+	r.locker.Lock()
+	defer r.locker.Unlock()
+	previous := r.addresses
+	next := normalizeRemapAddresses(addresses)
+	var changed []*iptables.IPTables
+	for _, ipt := range []*iptables.IPTables{r.nh.IPTables4, r.nh.IPTables6} {
+		if ipt != nil && !sameRemapFamily(previous, next, ipt.Proto()) {
+			changed = append(changed, ipt)
+		}
+	}
+	r.addresses = next
+	if !r.enabled.Load() {
+		return nil
+	}
+	for _, ipt := range changed {
+		if err := r.insertIPTablesRules(ipt); err != nil {
+			r.addresses = previous
+			errs := []error{err}
+			for _, rollback := range changed {
+				errs = append(errs, r.insertIPTablesRules(rollback))
+			}
+			return errors.Join(errs...)
+		}
+	}
+	return nil
 }
 
 func (r *PortRemap) insertIPTablesRules(ipt *iptables.IPTables) error {
@@ -138,7 +207,7 @@ func (nh *Helper) PortRemap(name string, from, to uint16, addr []netlink.Addr) *
 	return &PortRemap{
 		nh:        nh,
 		chainName: nh.ChainPrefix + name,
-		addresses: addr,
+		addresses: normalizeRemapAddresses(addr),
 		from:      from,
 		to:        to,
 	}

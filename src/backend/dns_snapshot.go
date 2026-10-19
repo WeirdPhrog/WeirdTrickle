@@ -61,5 +61,8 @@ func (a *App) publishDNSRulesLocked(pending []rulesets.Spec) {
 	for _, spec := range pending {
 		appendGroup(modelFromSpec(spec))
 	}
+	for _, spec := range a.configDNSRules {
+		appendGroup(modelFromSpec(spec))
+	}
 	a.dnsRules.Store(snapshot)
 }

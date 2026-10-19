@@ -64,6 +64,26 @@ func TestDNSSnapshotIncludesPendingRulesAndDropsRolledBackRules(t *testing.T) {
 	}
 }
 
+func TestConfigDNSPrefilterKeepsBothClassesDuringNestedReconciliation(t *testing.T) {
+	a := &App{}
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	group := rulesets.Spec{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeNamespace, Rule: "new-group.example", Enable: true}}}
+	sub := subscriptions.BuildRuntimeRuleSets([]*models.Subscription{{Enable: true, Interface: "vpn", Rules: []*models.SubscriptionRule{{Type: models.RuleTypeNamespace, Rule: "new-sub.example", Enable: true}}}})[0]
+	a.configDNSRules = []rulesets.Spec{group, sub}
+	for _, pending := range [][]rulesets.Spec{{sub}, nil, {group}, nil} {
+		a.publishDNSRulesLocked(pending)
+		if !a.dnsRules.Load().matches([]string{"new-group.example"}) || !a.dnsRules.Load().matches([]string{"new-sub.example"}) {
+			t.Fatal("nested update dropped domains from the full config transaction")
+		}
+	}
+	a.configDNSRules = nil
+	a.publishDNSRulesLocked(nil)
+	if a.dnsRules.Load().matches([]string{"new-group.example", "new-sub.example"}) {
+		t.Fatal("rolled-back rules remained in the prefilter")
+	}
+}
+
 func testPendingDNSSnapshotRollback(t *testing.T, pending rulesets.Spec) {
 	a := &App{}
 	current := &models.Group{Enable: true, Rules: []*models.Rule{{Type: models.RuleTypeDomain, Rule: "old.example", Enable: true}}}

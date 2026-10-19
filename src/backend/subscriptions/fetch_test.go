@@ -1,11 +1,18 @@
 package subscriptions
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// HTTP behavior fixtures run on localhost. Production entry points always use
+// checkFetchAddress; only these test calls explicitly inject the fixture policy.
+func fetchTestList(rawURL string) (string, error) {
+	return fetchListWithPolicy(context.Background(), rawURL, "", func(string) error { return nil })
+}
 
 func TestFetchListFollowsRedirects(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +29,7 @@ func TestFetchListFollowsRedirects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	list, err := FetchList(server.URL + "/start")
+	list, err := fetchTestList(server.URL + "/start")
 	if err != nil {
 		t.Fatalf("FetchList returned error: %v", err)
 	}
@@ -46,7 +53,7 @@ func TestFetchListRejectsTooManyRedirects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := FetchList(server.URL + "/0")
+	_, err := fetchTestList(server.URL + "/0")
 	if err == nil || !strings.Contains(err.Error(), "too many redirects") {
 		t.Fatalf("FetchList error = %v, want too many redirects", err)
 	}
@@ -65,7 +72,7 @@ func TestFetchListRejectsRedirectLoop(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := FetchList(server.URL + "/one")
+	_, err := fetchTestList(server.URL + "/one")
 	if err == nil || !strings.Contains(err.Error(), "redirect loop detected") {
 		t.Fatalf("FetchList error = %v, want redirect loop detected", err)
 	}

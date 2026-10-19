@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"syscall"
 
 	"github.com/rs/zerolog/log"
 )
@@ -32,6 +33,9 @@ func fetchWithFallback(ctx context.Context, name string, fetch func(context.Cont
 	if preferredErr == nil {
 		return list, nil
 	}
+	if errors.Is(preferredErr, errForbiddenFetchAddress) {
+		return "", preferredErr
+	}
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -44,16 +48,28 @@ func fetchWithFallback(ctx context.Context, name string, fetch func(context.Cont
 	return list, nil
 }
 
-func fetchTransport(name string) (*http.Transport, error) {
+func fetchTransport(name string, check fetchAddressPolicy) (*http.Transport, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if name == "" {
-		return transport, nil
+	dialer := &net.Dialer{Timeout: fetchTimeout}
+	if name != "" {
+		var err error
+		dialer, err = interfaceDialer(name)
+		if err != nil {
+			return nil, err
+		}
 	}
-	dialer, err := interfaceDialer(name)
-	if err != nil {
-		return nil, err
+	control := dialer.Control
+	dialer.Control = func(network, address string, conn syscall.RawConn) error {
+		if err := check(address); err != nil {
+			return err
+		}
+		if control != nil {
+			return control(network, address, conn)
+		}
+		return nil
 	}
-	transport.Proxy = nil // An environment proxy must not bypass the selected path.
+	// Proxies could resolve unchecked destinations or access their localhost.
+	transport.Proxy = nil
 	transport.DialContext = dialer.DialContext
 	return transport, nil
 }

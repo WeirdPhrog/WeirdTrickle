@@ -31,7 +31,7 @@ func TestEmptyDownloadedSubscriptionRetainsRulesAndBacksOff(t *testing.T) {
 			id := intID.ID{1}
 			rule := &models.SubscriptionRule{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: false}
 			sub := &models.Subscription{ID: id, URL: server.URL, Enable: true, Interval: 60, LastCheck: 1, LastUpdate: 1, Rules: []*models.SubscriptionRule{rule}}
-			a := &App{subscriptions: []*models.Subscription{sub}}
+			a := &App{subscriptionFetch: fetchSubscriptionFixture, subscriptions: []*models.Subscription{sub}}
 			now := time.Unix(1800000000, 0)
 			for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
 				if changed, err := a.SyncDueSubscriptions(now.Add(offset)); changed || err != nil {
@@ -70,7 +70,7 @@ func TestSubscriptionFailureBackoffPreservesRulesAndAllowsManualSync(t *testing.
 	id := intID.ID{1}
 	rule := &models.SubscriptionRule{ID: intID.ID{2}, Rule: "vpn.example", Type: models.RuleTypeDomain, Enable: true}
 	sub := &models.Subscription{ID: id, URL: server.URL, Enable: true, Interval: 86400, LastUpdate: 1, Rules: []*models.SubscriptionRule{rule}}
-	a := &App{subscriptions: []*models.Subscription{sub}}
+	a := &App{subscriptionFetch: fetchSubscriptionFixture, subscriptions: []*models.Subscription{sub}}
 	now := time.Unix(1800000000, 0)
 	for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
 		if _, err := a.syncDueSubscriptions(context.Background(), now.Add(offset)); err != nil {
@@ -119,7 +119,7 @@ func TestSubscriptionApplyFailureBackoffAndManualRecovery(t *testing.T) {
 	oldRules := []*models.SubscriptionRule{{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: true}}
 	// Duplicate runtime IDs cause a deterministic apply failure without kernel
 	// privileges. Successful HTTP downloads must not reset the apply backoff.
-	a := &App{subscriptions: []*models.Subscription{
+	a := &App{subscriptionFetch: fetchSubscriptionFixture, subscriptions: []*models.Subscription{
 		{ID: id, URL: server.URL, Enable: true, Interval: 60, Rules: oldRules},
 		{ID: id, URL: server.URL, Enable: true, Interval: 0, Rules: oldRules},
 	}}
@@ -162,7 +162,7 @@ func TestUnsupportedDownloadedRuleRetainsRulesAndBacksOff(t *testing.T) {
 	defer server.Close()
 	id := intID.ID{1}
 	rules := []*models.SubscriptionRule{{ID: intID.ID{2}, Rule: "old.example", Type: models.RuleTypeDomain, Enable: true}}
-	a := &App{subscriptions: []*models.Subscription{{ID: id, URL: server.URL, Enable: true, Interval: 60, Rules: rules}}}
+	a := &App{subscriptionFetch: fetchSubscriptionFixture, subscriptions: []*models.Subscription{{ID: id, URL: server.URL, Enable: true, Interval: 60, Rules: rules}}}
 	now := time.Unix(1800000000, 0)
 	for _, offset := range []time.Duration{0, 75 * time.Second, 2 * time.Minute} {
 		if _, err := a.SyncDueSubscriptions(now.Add(offset)); err != nil {
@@ -189,6 +189,7 @@ func TestSyncSubscriptionByIDUsesOverrideURLAndPersistsURL(t *testing.T) {
 
 	subID := intID.ID{0xa1, 0xb2, 0xc3, 0xd4}
 	app := &App{
+		subscriptionFetch: fetchSubscriptionFixture,
 		subscriptions: []*models.Subscription{
 			{
 				ID:     subID,

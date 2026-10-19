@@ -83,7 +83,7 @@ func TestConcurrentSubscriptionFetchSettings(t *testing.T) {
 	}
 }
 
-func TestSubscriptionFetchFallbackAndFailurePreserveRules(t *testing.T) {
+func TestSubscriptionFetchFailurePreservesRules(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if fail {
@@ -92,7 +92,7 @@ func TestSubscriptionFetchFallbackAndFailurePreserveRules(t *testing.T) {
 			}
 			_, _ = w.Write([]byte("keep.example.com\n"))
 		}))
-		a := &App{config: models.AppConfig{SubscriptionFetchInterface: "mt-no-such-if"}}
+		a := &App{config: models.AppConfig{SubscriptionFetchInterface: "mt-no-such-if"}, subscriptionFetch: fetchSubscriptionFixture}
 		sub := &models.Subscription{ID: intID.ID{1}, Enable: true, URL: server.URL, Interval: 3600, LastUpdate: 1, Rules: []*models.SubscriptionRule{{ID: intID.ID{2}, Type: models.RuleTypeDomain, Rule: "keep.example.com", Enable: true}}}
 		if err := a.AddSubscription(sub); err != nil {
 			t.Fatal(err)

@@ -232,6 +232,34 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 			}
 		}
 	}
+	// Model a lost interface event: remove the active VPN defaults while retaining
+	// their blackholes. A fresh state reconciliation must restore real forwarding
+	// in both families without rebuilding ipsets or leaking into WAN/subscriptions.
+	for _, family := range []string{"-4", "-6"} {
+		removed := 0
+		for _, line := range strings.Split(run("ip", family, "route", "show", "table", "all"), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 5 || fields[0] != "default" || fields[1] != "dev" || fields[2] != "mtother" {
+				continue
+			}
+			for index, field := range fields {
+				if field == "table" && index+1 < len(fields) {
+					run("ip", family, "route", "del", "table", fields[index+1], "default", "dev", "mtother", "metric", "10")
+					removed++
+					break
+				}
+			}
+		}
+		if removed == 0 {
+			t.Fatal("no active VPN routes removed for recovery test")
+		}
+	}
+	assertBlocked()
+	check(a.resyncNetworkState())
+	if g.ipset != oldSet || g.ipsetToLink != oldLink {
+		t.Fatal("event recovery rebuilt the live rule set")
+	}
+	assertEgress("mtother")
 	// A referenced temporary set makes replacement fail in the kernel while
 	// leaving the live sets intact. A failed rollback must retry, rather than
 	// release an unverified set or remain suspended after the fault clears.
@@ -247,6 +275,8 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	}
 	assertBlocked()
 	status := a.RoutingStatus()
+	check(a.resyncNetworkState())
+	assertBlocked() // Reconnecting event streams must not release a failed rollback.
 	if len(status) != 1 || status[0].ID != group.ID || status[0].Subscription || status[0].Error == "" || status[0].RetryDelaySeconds != 60 {
 		t.Fatalf("failed rollback is not visible: %+v", status)
 	}

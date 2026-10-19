@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"magitrickle/config"
 	"magitrickle/constant"
+	groupruntime "magitrickle/groups"
 	"magitrickle/models"
 	"magitrickle/subscriptions"
 
@@ -33,17 +36,21 @@ func applyIfSet[T any](dst *T, src *T) {
 }
 
 func (a *App) LoadConfig() error {
-	err := a.loadConfig(cfgFileLocation)
-	a.stateMu.Lock()
-	a.configLoadErr = err
-	a.stateMu.Unlock()
-	return err
+	return a.loadConfig(cfgFileLocation)
 }
 
-func (a *App) loadConfig(filename string) error {
+func (a *App) loadConfig(filename string) (err error) {
+	// Auto-refresh takes subscriptionSyncMu before saving; keep the same order.
+	a.subscriptionSyncMu.Lock()
+	defer a.subscriptionSyncMu.Unlock()
 	a.configFileMu.Lock()
+	defer a.configFileMu.Unlock()
+	defer func() {
+		a.stateMu.Lock()
+		a.configLoadErr = err
+		a.stateMu.Unlock()
+	}()
 	cfgFile, err := os.ReadFile(filename)
-	a.configFileMu.Unlock()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -70,86 +77,106 @@ func (a *App) loadConfig(filename string) error {
 		}
 	}
 	if cfg.Subscriptions != nil {
+		ids := make(map[string]bool, len(*cfg.Subscriptions))
 		for _, sub := range *cfg.Subscriptions {
 			if sub == nil {
 				return fmt.Errorf("null subscription in config")
 			}
+			if ids[sub.ID.String()] {
+				return fmt.Errorf("duplicate subscription ID in config")
+			}
+			ids[sub.ID.String()] = true
 			if err := subscriptions.ValidateRules(sub.Rules); err != nil {
 				return err
 			}
 		}
 	}
 
-	a.subscriptionSyncMu.Lock()
-	defer a.subscriptionSyncMu.Unlock()
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
+	if a.configSnapshot.Load() == nil {
+		a.publishConfigLocked()
+	}
+	nextConfig := a.config
 
 	if cfg.App != nil {
 		if cfg.App.HTTPWeb != nil {
-			applyIfSet(&a.config.HTTPWeb.Enabled, cfg.App.HTTPWeb.Enabled)
-			applyIfSet(&a.config.HTTPWeb.Skin, cfg.App.HTTPWeb.Skin)
+			applyIfSet(&nextConfig.HTTPWeb.Enabled, cfg.App.HTTPWeb.Enabled)
+			applyIfSet(&nextConfig.HTTPWeb.Skin, cfg.App.HTTPWeb.Skin)
+			applyIfSet(&nextConfig.HTTPWeb.AllowedHosts, cfg.App.HTTPWeb.AllowedHosts)
 			if cfg.App.HTTPWeb.Host != nil {
-				applyIfSet(&a.config.HTTPWeb.Host.Address, cfg.App.HTTPWeb.Host.Address)
-				applyIfSet(&a.config.HTTPWeb.Host.Port, cfg.App.HTTPWeb.Host.Port)
+				applyIfSet(&nextConfig.HTTPWeb.Host.Address, cfg.App.HTTPWeb.Host.Address)
+				applyIfSet(&nextConfig.HTTPWeb.Host.Port, cfg.App.HTTPWeb.Host.Port)
 			}
 			if cfg.App.HTTPWeb.Auth != nil {
-				applyIfSet(&a.config.HTTPWeb.Auth.Enabled, cfg.App.HTTPWeb.Auth.Enabled)
+				applyIfSet(&nextConfig.HTTPWeb.Auth.Enabled, cfg.App.HTTPWeb.Auth.Enabled)
 			}
 		}
 
 		if cfg.App.DNSProxy != nil {
 			if cfg.App.DNSProxy.Upstream != nil {
-				applyIfSet(&a.config.DNSProxy.Upstream.Address, cfg.App.DNSProxy.Upstream.Address)
-				applyIfSet(&a.config.DNSProxy.Upstream.Port, cfg.App.DNSProxy.Upstream.Port)
+				applyIfSet(&nextConfig.DNSProxy.Upstream.Address, cfg.App.DNSProxy.Upstream.Address)
+				applyIfSet(&nextConfig.DNSProxy.Upstream.Port, cfg.App.DNSProxy.Upstream.Port)
 			}
 			if cfg.App.DNSProxy.Host != nil {
-				applyIfSet(&a.config.DNSProxy.Host.Address, cfg.App.DNSProxy.Host.Address)
-				applyIfSet(&a.config.DNSProxy.Host.Port, cfg.App.DNSProxy.Host.Port)
+				applyIfSet(&nextConfig.DNSProxy.Host.Address, cfg.App.DNSProxy.Host.Address)
+				applyIfSet(&nextConfig.DNSProxy.Host.Port, cfg.App.DNSProxy.Host.Port)
 			}
-			applyIfSet(&a.config.DNSProxy.DisableRemap53, cfg.App.DNSProxy.DisableRemap53)
-			applyIfSet(&a.config.DNSProxy.DisableFakePTR, cfg.App.DNSProxy.DisableFakePTR)
-			applyIfSet(&a.config.DNSProxy.DisableDropAAAA, cfg.App.DNSProxy.DisableDropAAAA)
-			applyIfSet(&a.config.DNSProxy.MaxIdleConns, cfg.App.DNSProxy.MaxIdleConns)
-			applyIfSet(&a.config.DNSProxy.MaxConcurrent, cfg.App.DNSProxy.MaxConcurrent)
+			applyIfSet(&nextConfig.DNSProxy.DisableRemap53, cfg.App.DNSProxy.DisableRemap53)
+			applyIfSet(&nextConfig.DNSProxy.DisableFakePTR, cfg.App.DNSProxy.DisableFakePTR)
+			applyIfSet(&nextConfig.DNSProxy.DisableDropAAAA, cfg.App.DNSProxy.DisableDropAAAA)
+			applyIfSet(&nextConfig.DNSProxy.MaxIdleConns, cfg.App.DNSProxy.MaxIdleConns)
+			applyIfSet(&nextConfig.DNSProxy.MaxConcurrent, cfg.App.DNSProxy.MaxConcurrent)
 			if cfg.App.DNSProxy.Timeout != nil {
 				// Preserve legacy configs that stored a bare millisecond count.
 				t := *cfg.App.DNSProxy.Timeout
 				if t < time.Millisecond {
 					t *= time.Millisecond
 				}
-				a.config.DNSProxy.Timeout = t
+				nextConfig.DNSProxy.Timeout = t
 			}
 		}
 
 		if cfg.App.Netfilter != nil {
 			if cfg.App.Netfilter.IPTables != nil {
-				applyIfSet(&a.config.Netfilter.IPTables.ChainPrefix, cfg.App.Netfilter.IPTables.ChainPrefix)
+				applyIfSet(&nextConfig.Netfilter.IPTables.ChainPrefix, cfg.App.Netfilter.IPTables.ChainPrefix)
 			}
 			if cfg.App.Netfilter.IPSet != nil {
-				applyIfSet(&a.config.Netfilter.IPSet.TablePrefix, cfg.App.Netfilter.IPSet.TablePrefix)
+				applyIfSet(&nextConfig.Netfilter.IPSet.TablePrefix, cfg.App.Netfilter.IPSet.TablePrefix)
 				if cfg.App.Netfilter.IPSet.AdditionalTTL != nil {
 					// Preserve legacy configs that stored a bare second count.
 					t := *cfg.App.Netfilter.IPSet.AdditionalTTL
 					if t < time.Second {
 						t *= time.Second
 					}
-					a.config.Netfilter.IPSet.AdditionalTTL = t
+					nextConfig.Netfilter.IPSet.AdditionalTTL = t
 				}
 			}
-			applyIfSet(&a.config.Netfilter.DisableIPv4, cfg.App.Netfilter.DisableIPv4)
-			applyIfSet(&a.config.Netfilter.DisableIPv6, cfg.App.Netfilter.DisableIPv6)
-			applyIfSet(&a.config.Netfilter.StartMarkTableIndex, cfg.App.Netfilter.StartMarkTableIndex)
+			applyIfSet(&nextConfig.Netfilter.DisableIPv4, cfg.App.Netfilter.DisableIPv4)
+			applyIfSet(&nextConfig.Netfilter.DisableIPv6, cfg.App.Netfilter.DisableIPv6)
+			applyIfSet(&nextConfig.Netfilter.StartMarkTableIndex, cfg.App.Netfilter.StartMarkTableIndex)
 		}
 
-		applyIfSet(&a.config.Link, cfg.App.Link)
-		applyIfSet(&a.config.ShowAllInterfaces, cfg.App.ShowAllInterfaces)
-		applyIfSet(&a.config.LogLevel, cfg.App.LogLevel)
-		applyIfSet(&a.config.SubscriptionFetchInterface, cfg.App.SubscriptionFetchInterface)
+		applyIfSet(&nextConfig.Link, cfg.App.Link)
+		applyIfSet(&nextConfig.ShowAllInterfaces, cfg.App.ShowAllInterfaces)
+		applyIfSet(&nextConfig.LogLevel, cfg.App.LogLevel)
+		applyIfSet(&nextConfig.SubscriptionFetchInterface, cfg.App.SubscriptionFetchInterface)
 	}
-	a.publishConfigLocked()
+	for _, host := range nextConfig.HTTPWeb.AllowedHosts {
+		if _, err := models.NormalizeHTTPHost(host); err != nil {
+			return err
+		}
+	}
+	nextConfig.Link = slices.Clone(nextConfig.Link)
+	nextConfig.HTTPWeb.AllowedHosts = slices.Clone(nextConfig.HTTPWeb.AllowedHosts)
+	if a.enabled.Load() && configNeedsRestart(a.config, nextConfig) {
+		return fmt.Errorf("network/listener settings changed; restart the service to apply this config")
+	}
 
+	// Keep all proposed domains in the DNS prefilter throughout BOTH updates.
+	// Nested group/subscription reconciliation must not drop the other class.
 	if cfg.Groups != nil {
+		a.configDNSRules = groupruntime.BuildRuntimeRuleSets(*cfg.Groups)
 		for _, group := range *cfg.Groups {
 			if !colorRegExp.MatchString(group.Color) {
 				group.Color = "#ffffff"
@@ -157,18 +184,59 @@ func (a *App) loadConfig(filename string) error {
 				group.Color = strings.ToLower(group.Color)
 			}
 		}
+	}
+	if cfg.Subscriptions != nil {
+		a.configDNSRules = append(a.configDNSRules, subscriptions.BuildRuntimeRuleSets(*cfg.Subscriptions)...)
+	}
+	a.publishDNSRulesLocked(nil)
+	defer func() {
+		a.configDNSRules = nil
+		a.publishDNSRulesLocked(nil)
+	}()
+
+	previousSubscriptions := a.subscriptions
+	a.subscriptions = nil
+	if cfg.Subscriptions != nil {
+		a.subscriptions = slices.Clone(*cfg.Subscriptions)
+	}
+	restoreSubscriptions := func(cause error) error {
+		a.subscriptions = previousSubscriptions
+		if rollbackErr := a.syncSubscriptionRuleSetsLocked(); rollbackErr != nil {
+			return errors.Join(cause, fmt.Errorf("failed to restore subscriptions after config reload: %w", rollbackErr))
+		}
+		return cause
+	}
+	// Prepare broad subscriptions before groups can be removed. Group priority
+	// remains enforced by the existing routing tiers during the transaction.
+	if err := a.syncSubscriptionRuleSetsLocked(); err != nil {
+		return restoreSubscriptions(err)
+	}
+	if cfg.Groups != nil {
 		if err := a.replaceGroupsLocked(*cfg.Groups); err != nil {
-			return err
+			return restoreSubscriptions(err)
 		}
 	}
+	// Configuration readers see the new snapshot only after routing succeeded.
+	a.config = nextConfig
+	a.publishConfigLocked()
+	a.setupLogging()
+	return nil
+}
 
-	if cfg.Subscriptions != nil {
-		a.subscriptions = append(a.subscriptions[:0], *cfg.Subscriptions...)
-	} else {
-		a.subscriptions = a.subscriptions[:0]
+func configNeedsRestart(previous, next models.AppConfig) bool {
+	startupOnly := func(c models.AppConfig) models.AppConfig {
+		c.HTTPWeb.Auth.Enabled = false
+		c.HTTPWeb.Skin = ""
+		c.HTTPWeb.AllowedHosts = nil
+		c.DNSProxy.DisableFakePTR = false
+		c.DNSProxy.DisableDropAAAA = false
+		c.Netfilter.IPSet.AdditionalTTL = 0
+		c.ShowAllInterfaces = false
+		c.LogLevel = ""
+		c.SubscriptionFetchInterface = ""
+		return c
 	}
-
-	return a.syncSubscriptionRuleSetsLocked()
+	return !reflect.DeepEqual(startupOnly(previous), startupOnly(next))
 }
 
 func (a *App) SaveConfig() error {
@@ -245,6 +313,9 @@ func (a *App) saveConfigLocked(filename string) error {
 		},
 		Groups:        &groups,
 		Subscriptions: &a.subscriptions,
+	}
+	if len(a.config.HTTPWeb.AllowedHosts) > 0 {
+		cfg.App.HTTPWeb.AllowedHosts = &a.config.HTTPWeb.AllowedHosts
 	}
 	out, err := yaml.Marshal(cfg)
 	if err != nil {

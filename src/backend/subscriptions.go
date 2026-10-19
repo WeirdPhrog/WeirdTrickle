@@ -37,6 +37,9 @@ func (a *App) subscriptionFailed(id intID.ID, url string, now time.Time) {
 }
 
 func (a *App) FetchSubscriptionList(ctx context.Context, url string) (string, error) {
+	if a.subscriptionFetch != nil {
+		return a.subscriptionFetch(ctx, url, a.Config().SubscriptionFetchInterface)
+	}
 	return subscriptions.FetchListWithInterface(ctx, url, a.Config().SubscriptionFetchInterface)
 }
 
