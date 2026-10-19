@@ -34,7 +34,7 @@ func TestNetworkSubscriptionReconnectsWithoutShuttingDown(t *testing.T) {
 	default:
 		t.Fatal("old subscription was not closed")
 	}
-	if s.updates != nil || s.retry.ready == nil {
+	if s.updates != nil || s.retry.ready == nil || s.retry.delay != 2*time.Second {
 		t.Fatal("closed channel would spin the event loop")
 	}
 	s.retry.fired()

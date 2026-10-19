@@ -188,7 +188,7 @@ func (a *App) loadConfig(filename string) (err error) {
 	if cfg.Subscriptions != nil {
 		a.configDNSRules = append(a.configDNSRules, subscriptions.BuildRuntimeRuleSets(*cfg.Subscriptions)...)
 	}
-	a.publishDNSRulesLocked(nil)
+	a.beginConfigDNSRulesLocked(a.configDNSRules)
 	defer func() {
 		a.configDNSRules = nil
 		a.publishDNSRulesLocked(nil)
