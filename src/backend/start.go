@@ -37,7 +37,7 @@ func (a *App) Start(ctx context.Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "panic: %v\n%s\n", r, debug.Stack())
-			err = errors.New(fmt.Sprintf("panic: %v", r))
+			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
 

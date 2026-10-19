@@ -18,12 +18,12 @@ func TestNormalizeGroupColor(t *testing.T) {
 }
 
 func TestIsValidInterfaceName(t *testing.T) {
-	for _, name := range []string{"", "nwg0", "ppp0", "wg-vpn.1", "a_b", "123456789012345"} {
+	for _, name := range []string{"", "nwg0", "tun0", "ppp0", "lo", "eth0.100", "veth-1", "wg-vpn.1", "a_b", "123456789012345"} {
 		if !IsValidInterfaceName(name) {
 			t.Errorf("rejected %q", name)
 		}
 	}
-	for _, name := range []string{".", "..", "1234567890123456", "eth0/1", "eth 0", "eth0\n"} {
+	for _, name := range []string{".", "..", "1234567890123456", "eth0/1", "eth 0", " wg0", "wg0:1", "wg0\x00", "eth0\n"} {
 		if IsValidInterfaceName(name) {
 			t.Errorf("accepted %q", name)
 		}

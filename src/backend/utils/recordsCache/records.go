@@ -85,6 +85,8 @@ func (r *Records) AddAddress(domainName string, addr net.IP, ttl uint32) {
 
 	addresses := r.addresses[domainName]
 	for _, aRecord := range addresses {
+		// Compare bytes, not net.IP.Equal: a 4-byte A address and a 16-byte
+		// IPv4-mapped AAAA address are routed through different ipsets.
 		if bytes.Equal(aRecord.Address, addr) {
 			// Another client may still use an earlier answer with a longer TTL.
 			if deadline.After(aRecord.Deadline) {

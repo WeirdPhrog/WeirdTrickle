@@ -27,7 +27,7 @@ func TestCName(t *testing.T) {
 	if records == nil {
 		t.Fatal("no records")
 	}
-	if bytes.Compare(records[0].Address, []byte{1, 2, 3, 4}) != 0 {
+	if !bytes.Equal(records[0].Address, []byte{1, 2, 3, 4}) {
 		t.Fatal("cname mismatch")
 	}
 }
@@ -39,7 +39,7 @@ func TestA(t *testing.T) {
 	if records == nil {
 		t.Fatal("no records")
 	}
-	if bytes.Compare(records[0].Address, []byte{1, 2, 3, 4}) != 0 {
+	if !bytes.Equal(records[0].Address, []byte{1, 2, 3, 4}) {
 		t.Fatal("cname mismatch")
 	}
 }
@@ -76,7 +76,7 @@ func TestReplacing(t *testing.T) {
 	r.AddAlias("gateway.example.com", "example.com", 60)
 	r.AddAddress("gateway.example.com", []byte{1, 2, 3, 4}, 60)
 	records := r.GetAddresses("gateway.example.com")
-	if bytes.Compare(records[0].Address, []byte{1, 2, 3, 4}) != 0 {
+	if !bytes.Equal(records[0].Address, []byte{1, 2, 3, 4}) {
 		t.Fatal("mismatch")
 	}
 }

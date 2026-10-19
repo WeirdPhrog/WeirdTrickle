@@ -61,10 +61,6 @@ func SubscriptionFromReq(req types.SubscriptionReq, existing *models.Subscriptio
 	return sub, nil
 }
 
-func SubscriptionRuleFromReq(ruleReq types.SubscriptionRuleReq, existingRules []*models.SubscriptionRule) (*models.SubscriptionRule, error) {
-	return subscriptionRuleFromReq(ruleReq, indexSubscriptionRuleIDs(existingRules))
-}
-
 func indexSubscriptionRuleIDs(rules []*models.SubscriptionRule) map[intID.ID]struct{} {
 	ids := make(map[intID.ID]struct{}, len(rules))
 	for _, rule := range rules {

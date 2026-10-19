@@ -337,9 +337,10 @@ func subnetPrefixes(rule string, ipv6 bool) []netip.Prefix {
 	if ipv6 {
 		bits = 128
 	}
-	ip, ipNet, err := net.ParseCIDR(rule)
+	_, ipNet, err := net.ParseCIDR(rule)
 	if err != nil {
-		if ip = net.ParseIP(rule); ip == nil {
+		ip := net.ParseIP(rule)
+		if ip == nil {
 			return nil
 		}
 		ipNet = &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)}

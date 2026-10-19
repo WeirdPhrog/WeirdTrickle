@@ -59,7 +59,7 @@ The root package (`src/backend/*.go`) contains the `App` struct — the central 
 - **`start.go`** — `App.Start()`: wires up DNS MITM proxy, iptables helper, HTTP/Unix API servers, and the netlink watcher
 - **`network_subscription.go`**, **`netlink.go`** — reconnect closed netlink subscriptions with bounded backoff, reconcile current routes and refresh LAN DNS destinations without stopping the daemon or releasing failed rollbacks
 - **`dns.go`**, **`dns_snapshot.go`** — DNS hooks and a conservative prefilter; matching addresses must be routed before returning a usable answer, including pending subscription rules without `Spec.Model`
-- **`rule_set.go`** — `RuleSet` wraps a group spec with ipset + iptables lifecycle (Enable/Disable/Sync)
+- **`rule_set.go`** — `RuleSet` wraps a group spec with ipset + iptables lifecycle (Enable/Disable); its internal `sync` rebuilds the set from subnet rules and cached DNS addresses (`netip.Prefix`; the family selects the `_4`/`_6` set)
 - **`routing_restore.go`** — immutable rollback-error snapshots, recovery backoff (1–15 minutes) and runtime status; healthy maintenance checks an atomic flag before locking. `/api/v1/system/routing` and WebUI expose pending rollback recovery, not general VPN health.
 - **`subscriptions.go`** — subscription-level rule set management and auto-update scheduling
 
@@ -105,6 +105,8 @@ Defined in `models/rule.go`: `domain` (exact), `namespace` (domain + subdomains)
 
 **Location**: `src/frontend/`  
 **Stack**: Svelte 5, TypeScript, Vite, Prettier
+
+Page state lives in `src/modules`: `list-store.svelte.ts` (`ListStore`) holds the logic shared by Groups and Subscriptions (loading, change tracking, debounced search with forced visibility, progressive rendering, reordering, saving); `groups.svelte.ts` and `subscriptions.svelte.ts` add only page-specific behavior.
 
 ```sh
 cd src/frontend

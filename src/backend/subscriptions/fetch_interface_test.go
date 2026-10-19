@@ -75,19 +75,6 @@ func TestFetchMissingInterfaceRetriesOriginalURL(t *testing.T) {
 	}
 }
 
-func TestFetchInterfaceValidation(t *testing.T) {
-	for _, name := range []string{"", "nwg0", "tun0", "ppp0", "eth0.100", "veth-1", "lo"} {
-		if err := ValidateFetchInterface(name); err != nil {
-			t.Errorf("%q: %v", name, err)
-		}
-	}
-	for _, name := range []string{".", "..", "longinterface123", "wg0\x00", " wg0", "wg0/1", "wg0:1", "wg0\n"} {
-		if err := ValidateFetchInterface(name); err == nil {
-			t.Errorf("accepted %q", name)
-		}
-	}
-}
-
 func TestLocalResolverDetection(t *testing.T) {
 	local := []net.Addr{&net.IPNet{IP: net.ParseIP("192.168.1.1"), Mask: net.CIDRMask(24, 32)}}
 	for _, address := range []string{"127.0.0.1:53", "[::1]:53", "192.168.1.1:53"} {

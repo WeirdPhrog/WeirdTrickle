@@ -58,7 +58,7 @@ func TestRoutingInterfaceInputsCannotInjectIPTablesArguments(t *testing.T) {
 func TestEnabledUnsupportedRuleTypesAreRejected(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		_, groupErr := RuleFromReq(types.RuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)
-		_, subErr := SubscriptionRuleFromReq(types.SubscriptionRuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)
+		_, subErr := subscriptionRuleFromReq(types.SubscriptionRuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)
 		if (groupErr != nil) != enabled || (subErr != nil) != enabled {
 			t.Fatalf("unsupported enabled=%t: group=%v subscription=%v", enabled, groupErr, subErr)
 		}
@@ -115,7 +115,7 @@ func TestNewRulesStillReceiveServerAssignedIDs(t *testing.T) {
 		if err != nil || g.ID.IsZero() || g.ID == unknown {
 			t.Fatalf("new group rule ID: %v, %v", g, err)
 		}
-		s, err := SubscriptionRuleFromReq(types.SubscriptionRuleReq{ID: id, Rule: "example.com", Type: models.RuleTypeDomain}, nil)
+		s, err := subscriptionRuleFromReq(types.SubscriptionRuleReq{ID: id, Rule: "example.com", Type: models.RuleTypeDomain}, nil)
 		if err != nil || s.ID.IsZero() || s.ID == unknown {
 			t.Fatalf("new subscription rule ID: %v, %v", s, err)
 		}

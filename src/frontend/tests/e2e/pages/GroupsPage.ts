@@ -1,9 +1,8 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 
 export class GroupsPage {
   readonly page: Page;
   readonly saveButton: Locator;
-  readonly groupList: Locator;
   readonly addGroupButton: Locator;
   readonly searchContainer: Locator;
   readonly searchInput: Locator;
@@ -11,7 +10,6 @@ export class GroupsPage {
   constructor(page: Page) {
     this.page = page;
     this.saveButton = page.locator("#save-changes");
-    this.groupList = page.locator(".group-list");
     // Select the wrapper that contains the tooltip text "Add Group", then find the button inside it.
     this.addGroupButton = page.locator('[data-value="Add Group"]').locator("button");
     this.searchContainer = page.locator(
