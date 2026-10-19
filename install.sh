@@ -105,13 +105,19 @@ main() {
     release="$base/download/v$version"
     installed_status=$("$opkg" status magitrickle || :)
     installed=$(printf '%s\n' "$installed_status" | awk '/^Version: / { print $2; exit }')
-    installed_fork=$(printf '%s\n' "$installed_status" | awk '/^Description: WeirdTrickle( |$)/ { print "true"; exit }')
+    # Entware status omits Description; the installed control file retains it.
+    installed_metadata=$installed_status
+    if [ -n "$installed" ] && [ -r /opt/lib/opkg/info/magitrickle.control ]; then
+        installed_metadata=$(cat /opt/lib/opkg/info/magitrickle.control)
+    fi
+    installed_fork=$(printf '%s\n' "$installed_metadata" | awk '/^Description:[[:space:]]*WeirdTrickle([[:space:]]|$)/ { print "true"; exit }')
     printf 'WeirdTrickle | Target: %s | Installed: %s | Release: %s\n' "$target" "${installed:-none}" "$version-1"
     if [ -n "$installed" ] && [ "$installed_fork" != true ]; then
         printf 'Installed package is not identified as WeirdTrickle; migration is required.\n'
     fi
     [ "$check_only" = false ] || return 0
-    if [ -n "$installed" ] && [ "$explicit_version" = false ] && "$opkg" compare-versions "$installed" '>' "$version-1"; then
+    # opkg uses Debian relations: ">" includes equality, ">>" is strictly newer.
+    if [ -n "$installed" ] && [ "$explicit_version" = false ] && "$opkg" compare-versions "$installed" '>>' "$version-1"; then
         if printf '%s\n' "$installed" | grep -Eq "^${legacy_version}-[0-9]+$"; then
             printf 'Migrating from calendar versions to WeirdTrickle %s; configuration will be preserved.\n' "$version"
         else
