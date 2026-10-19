@@ -53,7 +53,7 @@ rotate_backups() (
         set -- "$@" "$archive"
     done
     [ "$#" -gt "$keep" ] || return 0
-    LC_ALL=C ls -1t "$@" > "$mt_tmp/backup-list" || die 'Cannot list configuration backups.'
+    LC_ALL=C QUOTING_STYLE=literal ls -1t "$@" > "$mt_tmp/backup-list" || die 'Cannot list configuration backups.'
     kept=0
     while IFS= read -r archive; do
         kept=$((kept + 1))

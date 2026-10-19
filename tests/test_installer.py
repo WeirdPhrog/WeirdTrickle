@@ -150,6 +150,7 @@ class InstallerTests(unittest.TestCase):
     def test_backup_rotation_keeps_new_and_latest_previous_and_ignores_other_files(self):
         config = self.existing_config()
         old = self.seed_backups()
+        self.env['QUOTING_STYLE'] = 'shell-always'
         directory = old[0].parent
         unrelated = [directory / 'manual.tar.gz', directory / 'before-manual.tar.gz',
                      directory / 'before-1.0.0-20261018T120000Z-44\nextra.tar.gz']
