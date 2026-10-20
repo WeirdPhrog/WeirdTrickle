@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-10-20
+
+### Изменено
+
+- В списках выбора интерфейса «Без VPN» стоит первым, `blackhole` — последним. Остальные интерфейсы идут в прежнем порядке.
+
 ## [2.2.1] — 2026-10-20
 
 ### Исправлено
@@ -188,7 +194,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.1...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.2...develop
+[2.2.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.3...v2.1.4
