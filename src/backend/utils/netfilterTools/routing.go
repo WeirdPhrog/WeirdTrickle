@@ -89,22 +89,32 @@ func (nh *Helper) appendRouteRules(ipt *iptables.IPTables, direct []string) erro
 	return nil
 }
 
-// setDirect adds or removes a direct exemption and rewrites ROUTE atomically
-// per family. A failed rewrite restores the previous exemption list. ROUTE is
-// rewritten even when the list is unchanged: after a partial failure one
-// family may still differ, and an unchanged commit is a no-op.
-func (nh *Helper) setDirect(ipsetName string, enabled bool) error {
+// directState tracks an enabled direct set. A suspended set stays direct (it
+// owns no tier chain, so tiers must keep skipping it) but has no exemption.
+type directState int
+
+const (
+	directAbsent directState = iota
+	directSuspended
+	directActive
+)
+
+// setDirect records a direct set's state and rewrites ROUTE atomically per
+// family. A failed rewrite restores the previous state. ROUTE is rewritten
+// even when the state is unchanged: after a partial failure one family may
+// still differ, and an unchanged commit is a no-op.
+func (nh *Helper) setDirect(ipsetName string, state directState) error {
 	nh.directMu.Lock()
 	defer nh.directMu.Unlock()
 	previous := nh.directSets[ipsetName]
 	if nh.directSets == nil {
-		nh.directSets = make(map[string]bool)
+		nh.directSets = make(map[string]directState)
 	}
-	setFlag := func(on bool) {
-		if on {
-			nh.directSets[ipsetName] = true
-		} else {
+	setFlag := func(state directState) {
+		if state == directAbsent {
 			delete(nh.directSets, ipsetName)
+		} else {
+			nh.directSets[ipsetName] = state
 		}
 	}
 	apply := func() error {
@@ -125,7 +135,7 @@ func (nh *Helper) setDirect(ipsetName string, enabled bool) error {
 		}
 		return nil
 	}
-	setFlag(enabled)
+	setFlag(state)
 	if err := apply(); err != nil {
 		setFlag(previous)
 		if restoreErr := apply(); restoreErr != nil {
@@ -139,13 +149,16 @@ func (nh *Helper) setDirect(ipsetName string, enabled bool) error {
 func (nh *Helper) isDirect(ipsetName string) bool {
 	nh.directMu.Lock()
 	defer nh.directMu.Unlock()
-	return nh.directSets[ipsetName]
+	return nh.directSets[ipsetName] != directAbsent
 }
 
+// Names of direct sets whose exemption is active.
 func (nh *Helper) directSetNamesLocked() []string {
 	names := make([]string, 0, len(nh.directSets))
-	for name := range nh.directSets {
-		names = append(names, name)
+	for name, state := range nh.directSets {
+		if state == directActive {
+			names = append(names, name)
+		}
 	}
 	slices.Sort(names)
 	return names

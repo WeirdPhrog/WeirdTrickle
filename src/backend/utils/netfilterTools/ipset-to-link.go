@@ -435,7 +435,7 @@ func (r *IPSetToLink) enable() error {
 		return nil
 	}
 	if r.direct {
-		return r.nh.setDirect(r.ipset.ipsetName, true)
+		return r.nh.setDirect(r.ipset.ipsetName, directActive)
 	}
 
 	var err error
@@ -491,7 +491,7 @@ func (r *IPSetToLink) disable() error {
 		return nil
 	}
 	if r.direct {
-		if err := r.nh.setDirect(r.ipset.ipsetName, false); err != nil {
+		if err := r.nh.setDirect(r.ipset.ipsetName, directAbsent); err != nil {
 			return err
 		}
 		r.enabled.Store(false)
@@ -528,7 +528,11 @@ func (r *IPSetToLink) SetInterface(name string) error {
 			return fmt.Errorf("switching between direct and %s routing requires a new routing link", name)
 		}
 		if r.enabled.Load() {
-			if err := r.nh.setDirect(r.ipset.ipsetName, name == Direct); err != nil {
+			state := directSuspended
+			if name == Direct {
+				state = directActive
+			}
+			if err := r.nh.setDirect(r.ipset.ipsetName, state); err != nil {
 				return err
 			}
 		}

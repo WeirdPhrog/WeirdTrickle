@@ -220,6 +220,8 @@ func TestDirectRoutingExemption(t *testing.T) {
 			// Suspending a direct set (failed rollback) withdraws its exemption, so
 			// unverified addresses follow the other sets instead of bypassing VPN.
 			must(t, direct.SetInterface(Blackhole))
+			// A suspended set is still direct: tiers must not jump to its absent chain.
+			must(t, nh.SetRoutingOrder([]string{"direct", "group"}, false))
 			if mark, _ := routePacket(t, fake, all, false, 77); mark != group.mark {
 				t.Fatalf("suspended direct set still exempts traffic: mark %d", mark)
 			}
