@@ -208,6 +208,57 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	assertEgress("mtother")
 	check(a.ReplaceGroups([]*models.Group{group, receiver}))
 	assertEgress("mtother")
+	// "No VPN" (direct) groups exempt their addresses before both tiers: the
+	// subscription VPN and other groups stop applying and the system route does,
+	// whatever the group order. Switching mode recreates the routing link.
+	resetCounters := func() {
+		for _, f := range families {
+			for _, iface := range []string{"mtwan", "mtvpn", "mtother"} {
+				run(f.command, "-t", "mangle", "-Z", "EGRESS_"+iface)
+			}
+		}
+	}
+	assertDirect := func() {
+		t.Helper()
+		for _, f := range families {
+			wan, vpn, other := count(f.command, "mtwan"), count(f.command, "mtvpn"), count(f.command, "mtother")
+			probe()
+			if count(f.command, "mtwan") <= wan || count(f.command, "mtvpn") != vpn || count(f.command, "mtother") != other {
+				t.Fatalf("%s: direct traffic did not follow the system route", f.network)
+			}
+		}
+	}
+	direct := &models.Group{ID: intID.ID{26}, Interface: netfilterTools.Direct, Enable: true, Rules: []*models.Rule{
+		{ID: intID.ID{27}, Type: models.RuleTypeSubnet, Rule: "198.18.0.1/32", Enable: true},
+		{ID: intID.ID{28}, Type: models.RuleTypeSubnet6, Rule: "2001:db8:ffff::1/128", Enable: true},
+	}}
+	check(a.AddGroup(direct))
+	assertDirect()
+	check(a.ReplaceGroups([]*models.Group{direct, group, receiver}))
+	assertDirect()
+	viaVPN := *direct
+	viaVPN.Interface = "mtvpn"
+	check(a.UpdateGroup(&viaVPN))
+	resetCounters()
+	assertEgress("mtother") // An ordinary group again: the later group wins.
+	check(a.UpdateGroup(direct))
+	assertDirect()
+	disabledDirect := *direct
+	disabledDirect.Enable = false
+	check(a.UpdateGroup(&disabledDirect))
+	resetCounters()
+	assertEgress("mtother")
+	check(a.UpdateGroup(direct))
+	assertDirect()
+	if removed, err := a.RemoveGroupByID(direct.ID); err != nil || !removed {
+		t.Fatalf("direct group removal: %t %v", removed, err)
+	}
+	resetCounters()
+	assertEgress("mtother")
+	if err := a.AddSubscription(&models.Subscription{ID: intID.ID{16}, Interface: netfilterTools.Direct, Enable: true}); err == nil {
+		t.Fatal("a direct subscription would override group priority")
+	}
+	assertEgress("mtother")
 	invalid := *group
 	invalid.Interface = "interface-name-too-long-for-kernel"
 	if err := a.UpdateGroup(&invalid); err == nil {

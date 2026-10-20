@@ -129,7 +129,10 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 			return err
 		}
 	}
-	if g.Enabled() && previous.Enable && model.Enable {
+	// Direct routing has no mark or table to keep, so switching to or from it
+	// recreates the routing link instead of changing the interface in place.
+	modeChanged := isDirect(previous.Interface) != isDirect(model.Interface)
+	if g.Enabled() && previous.Enable && model.Enable && !modeChanged {
 		// DNS additions use this same lock. Prepare replacement sets without
 		// unlinking the existing packet classification or policy routes.
 		g.storeModel(model)
@@ -150,7 +153,7 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 		g.restoreState.Store(nil)
 		return nil
 	}
-	if running && previous.Enable != model.Enable {
+	if running && (previous.Enable != model.Enable || modeChanged) {
 		if err := g.disable(); err != nil {
 			return err
 		}
@@ -171,6 +174,10 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 		return errors.Join(err, cleanupErr, apply())
 	}
 	return nil
+}
+
+func isDirect(iface string) bool {
+	return iface == netfilterTools.Direct
 }
 
 func modelFromSpec(spec rulesets.Spec) *models.Group {
@@ -401,7 +408,8 @@ func (g *RuleSet) prepareUpdate(model *models.Group, retainOld bool) error {
 }
 
 func (g *RuleSet) restoreModel(model *models.Group) error {
-	if !g.Enabled() || !g.ConfiguredEnabled() || !model.Enable || g.ipset == nil || g.ipsetToLink == nil {
+	if !g.Enabled() || !g.ConfiguredEnabled() || !model.Enable || g.ipset == nil || g.ipsetToLink == nil ||
+		isDirect(g.RouteInterface()) != isDirect(model.Interface) {
 		return g.updateModel(model)
 	}
 	g.locker.Lock()

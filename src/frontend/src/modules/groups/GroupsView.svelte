@@ -313,6 +313,7 @@
     currentInterface={selectedItems.every((item) => item.interface === selectedItems[0]?.interface)
       ? selectedItems[0]?.interface
       : undefined}
+    includeDirect
     onclear={() => (selectedIds = [])}
     onapply={(value) => applyToSelected({ interface: value })}
     currentEnabled={selectedItems.every((item) => item.enable === selectedItems[0]?.enable)

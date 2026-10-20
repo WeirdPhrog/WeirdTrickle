@@ -1,6 +1,8 @@
 {
   "Download interface": "Интерфейс загрузки",
   "System default": "Системный маршрут",
+  "No VPN": "Без VPN",
+  "System route": "Системный маршрут",
   "Retry": "Повторить",
   "For all subscriptions. Saves automatically. If unavailable, retries via the system default route.": "Для всех подписок. Сохраняется автоматически. При недоступности — повторная попытка через системный маршрут.",
   "Save Changes": "Сохранить изменения",

@@ -1,6 +1,8 @@
 package netfilterTools
 
 import (
+	"sync"
+
 	"magitrickle/utils/iptables"
 )
 
@@ -11,6 +13,9 @@ type Helper struct {
 	IPTables6   *iptables.IPTables
 
 	StartIdx uint32
+
+	directMu   sync.Mutex
+	directSets map[string]bool // ipset base names of enabled direct rule sets
 }
 
 func New(chainPrefix, ipsetPrefix string, disableIPv4, disableIPv6 bool, startIdx uint32) (*Helper, error) {

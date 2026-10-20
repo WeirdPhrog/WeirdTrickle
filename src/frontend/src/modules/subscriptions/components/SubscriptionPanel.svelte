@@ -30,7 +30,7 @@
   import Select from "../../../components/ui/Select.svelte";
   import Switch from "../../../components/ui/Switch.svelte";
   import Tooltip from "../../../components/ui/Tooltip.svelte";
-  import { interfaces } from "../../../data/interfaces.svelte";
+  import { interfaceOptions } from "../../../data/interfaces.svelte";
   import { t } from "../../../data/locale.svelte";
   import { SUBSCRIPTIONS_STORE_CONTEXT, type SubscriptionsStore } from "../subscriptions.svelte";
   import SubscriptionRuleRow from "./SubscriptionRuleRow.svelte";
@@ -275,11 +275,7 @@
         <div class="subscription-actions">
           <div class="action interface">
             <Select
-              options={interfaces.list.map((item) => ({
-                value: item.id,
-                label: item.id,
-                description: item.name,
-              }))}
+              options={interfaceOptions(false)}
               bind:selected={subscription.interface}
               class="subscription-interface"
             />

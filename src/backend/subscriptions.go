@@ -10,6 +10,7 @@ import (
 	"magitrickle/models"
 	"magitrickle/subscriptions"
 	"magitrickle/utils/intID"
+	"magitrickle/utils/netfilterTools"
 
 	"github.com/rs/zerolog/log"
 )
@@ -69,6 +70,10 @@ func (a *App) syncSubscriptionRuleSetsLocked() error {
 	for _, sub := range a.subscriptions {
 		if sub == nil {
 			return fmt.Errorf("null subscription")
+		}
+		if sub.Interface == netfilterTools.Direct {
+			// A direct exemption precedes both tiers and would override groups.
+			return fmt.Errorf("subscription %s: direct routing is only available for groups", sub.ID)
 		}
 		if err := subscriptions.ValidateRules(sub.Rules); err != nil {
 			return err

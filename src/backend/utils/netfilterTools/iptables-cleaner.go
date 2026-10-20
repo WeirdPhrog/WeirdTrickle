@@ -73,6 +73,10 @@ func (nh *Helper) cleanIPTables(ipt *iptables.IPTables) error {
 }
 
 func (nh *Helper) CleanIPTables() error {
+	// The ROUTE chain and its direct exemptions are removed with the rest.
+	nh.directMu.Lock()
+	nh.directSets = nil
+	nh.directMu.Unlock()
 	var errs []error
 	errs = append(errs, nh.cleanIPTables(nh.IPTables4))
 	errs = append(errs, nh.cleanIPTables(nh.IPTables6))

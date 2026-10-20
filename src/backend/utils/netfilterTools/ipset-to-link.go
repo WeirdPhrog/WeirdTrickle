@@ -18,10 +18,16 @@ import (
 
 const Blackhole = "blackhole"
 
+// Direct is the interface value of a rule set whose traffic bypasses
+// WeirdTrickle: it is exempted before both tiers and keeps the router's own
+// marks and routes, with no mark, table, filter or NAT rules of its own.
+const Direct = "direct"
+
 type IPSetToLink struct {
 	enabled atomic.Bool
 	locker  sync.Mutex
 
+	direct       bool // fixed at creation; changing mode recreates the link
 	chainName    string
 	routingChain string
 	ifaceName    string
@@ -428,6 +434,9 @@ func (r *IPSetToLink) enable() error {
 	if !r.enabled.CompareAndSwap(false, true) {
 		return nil
 	}
+	if r.direct {
+		return r.nh.setDirect(r.ipset.ipsetName, true)
+	}
 
 	var err error
 	idx, err := r.getUnusedMarkAndTable()
@@ -481,6 +490,13 @@ func (r *IPSetToLink) disable() error {
 	if !r.enabled.Load() {
 		return nil
 	}
+	if r.direct {
+		if err := r.nh.setDirect(r.ipset.ipsetName, false); err != nil {
+			return err
+		}
+		r.enabled.Store(false)
+		return nil
+	}
 	// Keep policy routes (including blackholes) while packets can still be
 	// marked. If unlinking fails, retain them and allow a later cleanup retry.
 	if err := errors.Join(r.deleteIPTablesRules(r.nh.IPTables4), r.deleteIPTablesRules(r.nh.IPTables6)); err != nil {
@@ -503,6 +519,13 @@ func (r *IPSetToLink) SetInterface(name string) error {
 	defer r.locker.Unlock()
 	if r.ifaceName == name {
 		return nil
+	}
+	if r.direct || name == Direct {
+		// Direct traffic never used our table, so there is nothing to suspend.
+		if r.direct && name == Blackhole {
+			return nil
+		}
+		return fmt.Errorf("switching between direct and %s routing requires re-enabling the rule set", name)
 	}
 	previous := r.ifaceName
 	apply := func(name string) error {
@@ -571,7 +594,7 @@ func (r *IPSetToLink) LinkUpHook(event netlink.LinkUpdate) error {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 
-	if !r.enabled.Load() || event.Link.Attrs().Name != r.ifaceName {
+	if !r.enabled.Load() || r.direct || event.Link.Attrs().Name != r.ifaceName {
 		return nil
 	}
 
@@ -584,7 +607,7 @@ func (r *IPSetToLink) AddrChangeHook(event netlink.AddrUpdate) error {
 	r.locker.Lock()
 	defer r.locker.Unlock()
 
-	if !r.enabled.Load() || r.ifaceName == Blackhole {
+	if !r.enabled.Load() || r.direct || r.ifaceName == Blackhole {
 		return nil
 	}
 
@@ -614,6 +637,7 @@ func (nh *Helper) IPSetToLink(name string, ifaceName string, ipset *IPSet, subsc
 		routingChain = nh.ChainPrefix + "SUBS"
 	}
 	return &IPSetToLink{
+		direct:       ifaceName == Direct,
 		routingChain: routingChain,
 		nh:           nh,
 		chainName:    nh.ChainPrefix + name,

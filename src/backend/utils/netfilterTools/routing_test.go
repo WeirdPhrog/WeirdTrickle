@@ -166,6 +166,73 @@ func TestRoutingMatchesAndSkips(t *testing.T) {
 	}
 }
 
+func TestDirectRoutingExemption(t *testing.T) {
+	for _, proto := range []iptables.Protocol{iptables.ProtocolIPv4, iptables.ProtocolIPv6} {
+		t.Run(fmt.Sprint(proto), func(t *testing.T) {
+			fake := iptables.NewFakeIPTables(proto)
+			ipt := iptables.NewIPTables(fake)
+			nh := &Helper{ChainPrefix: "MT_", IpsetPrefix: "mt_"}
+			if proto == iptables.ProtocolIPv4 {
+				nh.IPTables4 = ipt
+			} else {
+				nh.IPTables6 = ipt
+			}
+			for table, chain := range map[string]string{"mangle": "PREROUTING", "filter": "FORWARD", "nat": "POSTROUTING"} {
+				must(t, ipt.RegisterChainPatch(table, chain))
+			}
+			must(t, nh.InitRouting())
+			sub := nh.IPSetToLink("sub", "vpn-sub", nh.IPSet("sub"), true)
+			group := nh.IPSetToLink("group", "vpn-group", nh.IPSet("group"), false)
+			direct := nh.IPSetToLink("direct", Direct, nh.IPSet("direct"), false)
+			sub.mark, group.mark = 101, 201
+			must(t, sub.insertIPTablesRules(ipt))
+			must(t, group.insertIPTablesRules(ipt))
+			must(t, direct.Enable())
+			// Ordering a tier must not reference the direct set's (absent) chain.
+			must(t, nh.SetRoutingOrder([]string{"direct", "group"}, false))
+			if fake.ChainExists("mangle", direct.chainName) || fake.ChainExists("filter", direct.chainName) || fake.ChainExists("nat", direct.chainName) {
+				t.Fatal("direct rule set created marking, filter or NAT rules")
+			}
+			for mask := 0; mask < 8; mask++ {
+				sets := map[string]bool{
+					sub.ipsetName(ipt):    mask&1 != 0,
+					group.ipsetName(ipt):  mask&2 != 0,
+					direct.ipsetName(ipt): mask&4 != 0,
+				}
+				want := uint32(77)
+				switch {
+				case sets[direct.ipsetName(ipt)]:
+				case sets[group.ipsetName(ipt)]:
+					want = group.mark
+				case sets[sub.ipsetName(ipt)]:
+					want = sub.mark
+				}
+				if mark, connmark := routePacket(t, fake, sets, false, 77); mark != want || connmark != want {
+					t.Fatalf("mask=%d: marks=%d/%d, want %d", mask, mark, connmark, want)
+				}
+			}
+			// Firewall reconstruction keeps the exemption.
+			must(t, ipt.Commit())
+			all := map[string]bool{sub.ipsetName(ipt): true, group.ipsetName(ipt): true, direct.ipsetName(ipt): true}
+			if mark, _ := routePacket(t, fake, all, false, 77); mark != 77 {
+				t.Fatalf("exemption lost after reconstruction: mark %d", mark)
+			}
+			// Suspending a direct set is a no-op; switching mode in place is refused.
+			must(t, direct.SetInterface(Blackhole))
+			if direct.SetInterface("vpn-group") == nil || group.SetInterface(Direct) == nil {
+				t.Fatal("mode switch was applied in place")
+			}
+			must(t, direct.Disable())
+			if mark, _ := routePacket(t, fake, all, false, 77); mark != group.mark {
+				t.Fatalf("disabled direct set still exempts traffic: mark %d", mark)
+			}
+			if got := fake.GetRules("mangle", "MT_ROUTE"); !reflect.DeepEqual(got, [][]string{{"-m", "conntrack", "--ctdir", "REPLY", "-j", "RETURN"}, {"-j", "MT_SUBS"}, {"-j", "MT_GROUPS"}}) {
+				t.Fatalf("unexpected ROUTE chain after disabling: %v", got)
+			}
+		})
+	}
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"magitrickle/app"
 	"magitrickle/models"
 	"magitrickle/utils/intID"
+	"magitrickle/utils/netfilterTools"
 
 	"github.com/rs/zerolog/log"
 )
@@ -73,10 +74,12 @@ func (h *Handler) ListInterfaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := make([]types.InterfaceRes, len(interfaces)+1)
-	res[0] = types.InterfaceRes{ID: "blackhole"}
+	// Special targets come first: drop traffic, or bypass VPN routing (groups only).
+	res := make([]types.InterfaceRes, len(interfaces)+2)
+	res[0] = types.InterfaceRes{ID: netfilterTools.Blackhole}
+	res[1] = types.InterfaceRes{ID: netfilterTools.Direct}
 	for i, iface := range interfaces {
-		res[i+1] = types.InterfaceRes{
+		res[i+2] = types.InterfaceRes{
 			ID:   iface.ID,
 			Name: iface.Name,
 		}

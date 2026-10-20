@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
 
   import Select from "../../../components/ui/Select.svelte";
-  import { interfaces } from "../../../data/interfaces.svelte";
+  import { DIRECT_INTERFACE, interfaces } from "../../../data/interfaces.svelte";
   import { t } from "../../../data/locale.svelte";
 
   import { toast } from "../../../utils/events";
@@ -17,7 +17,7 @@
   let options = $derived([
     { value: "", label: t("System default") },
     ...interfaces.list
-      .filter((item) => item.id !== "blackhole")
+      .filter((item) => item.id !== "blackhole" && item.id !== DIRECT_INTERFACE)
       .map((item) => ({ value: item.id, label: item.id, description: item.name })),
   ]);
 

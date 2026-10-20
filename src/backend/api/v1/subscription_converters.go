@@ -6,11 +6,18 @@ import (
 	"magitrickle/api/v1/types"
 	"magitrickle/models"
 	"magitrickle/utils/intID"
+	"magitrickle/utils/netfilterTools"
 )
+
+// Direct routing would bypass the groups tier and break group priority.
+var errDirectSubscription = fmt.Errorf("direct routing is only available for groups")
 
 func SubscriptionFromReq(req types.SubscriptionReq, existing *models.Subscription) (*models.Subscription, error) {
 	if !models.IsValidInterfaceName(req.Interface) {
 		return nil, fmt.Errorf("invalid routing interface")
+	}
+	if req.Interface == netfilterTools.Direct {
+		return nil, errDirectSubscription
 	}
 	sub := &models.Subscription{Enable: true}
 	if existing != nil {

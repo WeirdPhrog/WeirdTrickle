@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"magitrickle/constant"
+	"magitrickle/utils/netfilterTools"
 
 	"github.com/rs/zerolog/log"
 	"github.com/vishvananda/netlink"
@@ -176,7 +177,7 @@ func (a *App) resyncNetworkState() error {
 	a.stateMu.RLock()
 	defer a.stateMu.RUnlock()
 	for _, group := range a.ruleSetSnapshotLocked() {
-		if !group.Enabled() || !group.ConfiguredEnabled() || group.restoreState.Load() != nil || group.RouteInterface() == "blackhole" {
+		if !group.Enabled() || !group.ConfiguredEnabled() || group.restoreState.Load() != nil || group.RouteInterface() == netfilterTools.Blackhole || group.RouteInterface() == netfilterTools.Direct {
 			continue
 		}
 		link, err := netlink.LinkByName(group.RouteInterface())

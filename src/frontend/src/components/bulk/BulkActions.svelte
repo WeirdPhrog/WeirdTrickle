@@ -2,7 +2,7 @@
   import { backOut, cubicIn } from "svelte/easing";
   import { fly } from "svelte/transition";
 
-  import { interfaces } from "../../data/interfaces.svelte";
+  import { interfaceLabel, interfaceOptions, interfaces } from "../../data/interfaces.svelte";
   import { t } from "../../data/locale.svelte";
   import Button from "../ui/Button.svelte";
   import Select from "../ui/Select.svelte";
@@ -22,6 +22,7 @@
     count,
     totalCount,
     currentInterface,
+    includeDirect = false,
     currentEnabled,
     onclear,
     onapply,
@@ -33,6 +34,7 @@
     count: number;
     totalCount: number;
     currentInterface?: string;
+    includeDirect?: boolean;
     currentEnabled?: boolean;
     onclear: () => void;
     onapply: (value: string) => void;
@@ -105,15 +107,13 @@
       triggerClass="bulk-button"
       selected={currentInterface ?? ""}
       disabled={busy || !interfaces.list.length}
-      options={interfaces.list.map((item) => ({
-        value: item.id,
-        label: item.id,
-        description: item.name,
-      }))}
+      options={interfaceOptions(includeDirect)}
       onValueChange={onapply}
     >
       {#snippet trigger()}
-        <Network size={18} />{currentInterface || t("Interface")}<SelectOpen size={16} />
+        <Network size={18} />{currentInterface
+          ? interfaceLabel(currentInterface)
+          : t("Interface")}<SelectOpen size={16} />
       {/snippet}
     </Select>
     <Select

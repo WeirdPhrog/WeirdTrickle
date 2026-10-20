@@ -55,6 +55,15 @@ func TestRoutingInterfaceInputsCannotInjectIPTablesArguments(t *testing.T) {
 	}
 }
 
+func TestDirectRoutingIsGroupOnly(t *testing.T) {
+	if _, err := GroupFromReq(types.GroupReq{Interface: "direct"}, nil); err != nil {
+		t.Fatalf("direct group rejected: %v", err)
+	}
+	if _, err := SubscriptionFromReq(types.SubscriptionReq{Interface: "direct"}, nil); err == nil {
+		t.Fatal("direct subscription accepted")
+	}
+}
+
 func TestEnabledUnsupportedRuleTypesAreRejected(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		_, groupErr := RuleFromReq(types.RuleReq{Type: "unsupported", Rule: "example.com", Enable: enabled}, nil)

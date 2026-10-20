@@ -89,7 +89,7 @@ Key sub-packages:
 4. Matching IPs are added to the group's ipset with TTL = DNS TTL + `AdditionalTTL` (default 3600s)
 5. iptables routes packets from the ipset through the group's configured interface
 
-Subscriptions are evaluated first, then Groups set the final routing priority. Preserve this ordering for IPv4/IPv6 and after updates or firewall reconstruction. Rule updates prepare replacement sets before publishing them; interface changes keep a blackhole route during the transition. DNS addresses that match a rule but cannot be installed produce SERVFAIL. These mechanisms do not cover client DNS that bypasses the proxy or traffic without a matching rule.
+Groups with interface `direct` ("No VPN") get no mark, table, filter or NAT rules: `MT_ROUTE` returns for their sets before both tiers, so matched traffic keeps the router's own routing. Switching a group to or from `direct` recreates its routing link; subscriptions cannot use it. Subscriptions are evaluated first, then Groups set the final routing priority. Preserve this ordering for IPv4/IPv6 and after updates or firewall reconstruction. Rule updates prepare replacement sets before publishing them; interface changes keep a blackhole route during the transition. DNS addresses that match a rule but cannot be installed produce SERVFAIL. These mechanisms do not cover client DNS that bypasses the proxy or traffic without a matching rule.
 
 Subscription fetching has a separate shared interface setting, `app.subscriptionFetchInterface`. If that interface fails, fetching retries through the system route. This fallback is intentional and does not change the traffic-routing interface selected inside each group/subscription.
 
