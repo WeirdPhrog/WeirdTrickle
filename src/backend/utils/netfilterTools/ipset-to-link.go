@@ -520,12 +520,23 @@ func (r *IPSetToLink) SetInterface(name string) error {
 	if r.ifaceName == name {
 		return nil
 	}
-	if r.direct || name == Direct {
-		// Direct traffic never used our table, so there is nothing to suspend.
-		if r.direct && name == Blackhole {
-			return nil
+	if r.direct {
+		// A direct set has no table to blackhole. Suspending withdraws its
+		// exemption instead, so unverified addresses follow the remaining rule
+		// sets rather than bypassing VPN; Direct restores the exemption.
+		if name != Blackhole && name != Direct {
+			return fmt.Errorf("switching between direct and %s routing requires a new routing link", name)
 		}
-		return fmt.Errorf("switching between direct and %s routing requires re-enabling the rule set", name)
+		if r.enabled.Load() {
+			if err := r.nh.setDirect(r.ipset.ipsetName, name == Direct); err != nil {
+				return err
+			}
+		}
+		r.ifaceName = name
+		return nil
+	}
+	if name == Direct {
+		return fmt.Errorf("switching between %s and direct routing requires a new routing link", r.ifaceName)
 	}
 	previous := r.ifaceName
 	apply := func(name string) error {

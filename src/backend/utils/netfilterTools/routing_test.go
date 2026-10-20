@@ -217,8 +217,16 @@ func TestDirectRoutingExemption(t *testing.T) {
 			if mark, _ := routePacket(t, fake, all, false, 77); mark != 77 {
 				t.Fatalf("exemption lost after reconstruction: mark %d", mark)
 			}
-			// Suspending a direct set is a no-op; switching mode in place is refused.
+			// Suspending a direct set (failed rollback) withdraws its exemption, so
+			// unverified addresses follow the other sets instead of bypassing VPN.
 			must(t, direct.SetInterface(Blackhole))
+			if mark, _ := routePacket(t, fake, all, false, 77); mark != group.mark {
+				t.Fatalf("suspended direct set still exempts traffic: mark %d", mark)
+			}
+			must(t, direct.SetInterface(Direct))
+			if mark, _ := routePacket(t, fake, all, false, 77); mark != 77 {
+				t.Fatalf("resumed direct set does not exempt traffic: mark %d", mark)
+			}
 			if direct.SetInterface("vpn-group") == nil || group.SetInterface(Direct) == nil {
 				t.Fatal("mode switch was applied in place")
 			}
@@ -230,6 +238,52 @@ func TestDirectRoutingExemption(t *testing.T) {
 				t.Fatalf("unexpected ROUTE chain after disabling: %v", got)
 			}
 		})
+	}
+}
+
+// failingRestore makes chosen iptables-restore calls fail.
+type failingRestore struct {
+	*iptables.FakeIPTables
+	fail func() bool
+}
+
+func (f *failingRestore) Restore(data []byte) error {
+	if f.fail() {
+		return fmt.Errorf("injected restore failure")
+	}
+	return f.FakeIPTables.Restore(data)
+}
+
+// IPv4 applies, IPv6 fails and the IPv4 rollback fails as well: the next
+// removal must still rewrite ROUTE instead of trusting the in-memory list.
+func TestDirectExemptionRecoversFromPartialFailure(t *testing.T) {
+	fake4 := iptables.NewFakeIPTables(iptables.ProtocolIPv4)
+	fake6 := iptables.NewFakeIPTables(iptables.ProtocolIPv6)
+	failing := false
+	restores4 := 0
+	ipt4 := iptables.NewIPTables(&failingRestore{fake4, func() bool { restores4++; return failing && restores4 > 1 }})
+	ipt6 := iptables.NewIPTables(&failingRestore{fake6, func() bool { return failing }})
+	nh := &Helper{ChainPrefix: "MT_", IpsetPrefix: "mt_", IPTables4: ipt4, IPTables6: ipt6}
+	for _, ipt := range []*iptables.IPTables{ipt4, ipt6} {
+		for table, chain := range map[string]string{"mangle": "PREROUTING", "filter": "FORWARD", "nat": "POSTROUTING"} {
+			must(t, ipt.RegisterChainPatch(table, chain))
+		}
+	}
+	must(t, nh.InitRouting())
+	restores4 = 0
+	failing = true
+	direct := nh.IPSetToLink("direct", Direct, nh.IPSet("direct"), false)
+	if direct.Enable() == nil {
+		t.Fatal("injected failure was not reported")
+	}
+	if got := len(fake4.GetRules("mangle", "MT_ROUTE")); got != 4 {
+		t.Fatalf("test setup: IPv4 should keep the stale exemption, ROUTE has %d rules", got)
+	}
+	failing = false
+	must(t, direct.Disable())
+	want := [][]string{{"-m", "conntrack", "--ctdir", "REPLY", "-j", "RETURN"}, {"-j", "MT_SUBS"}, {"-j", "MT_GROUPS"}}
+	if got := fake4.GetRules("mangle", "MT_ROUTE"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("stale IPv4 exemption survived cleanup: %v", got)
 	}
 }
 

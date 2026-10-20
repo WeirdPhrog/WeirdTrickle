@@ -130,9 +130,12 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 		}
 	}
 	// Direct routing has no mark or table to keep, so switching to or from it
-	// recreates the routing link instead of changing the interface in place.
+	// replaces the routing link instead of changing the interface in place.
 	modeChanged := isDirect(previous.Interface) != isDirect(model.Interface)
-	if g.Enabled() && previous.Enable && model.Enable && !modeChanged {
+	if g.Enabled() && previous.Enable && model.Enable && modeChanged {
+		return g.switchModeLocked(previous, model)
+	}
+	if g.Enabled() && previous.Enable && model.Enable {
 		// DNS additions use this same lock. Prepare replacement sets without
 		// unlinking the existing packet classification or policy routes.
 		g.storeModel(model)
@@ -173,6 +176,39 @@ func (g *RuleSet) updateModel(model *models.Group) error {
 		g.storeModel(previous)
 		return errors.Join(err, cleanupErr, apply())
 	}
+	return nil
+}
+
+// Make before break. A direct exemption precedes both tiers, so enabling it
+// before unlinking a VPN set, or withdrawing it only after a VPN set is linked,
+// moves the traffic in one firewall commit, never through other rule sets.
+// The ipset is kept; on failure the previous link and rules stay in place.
+func (g *RuleSet) switchModeLocked(previous, model *models.Group) error {
+	current := g.ipsetToLink
+	next := g.app.nfHelper.IPSetToLink(g.RuntimeKey(), model.Interface, g.ipset, g.spec.Subscription)
+	g.storeModel(model)
+	rollback := func(err error) error {
+		errs := []error{err, next.Disable()}
+		g.storeModel(previous)
+		return errors.Join(append(errs, g.sync())...)
+	}
+	if !isDirect(model.Interface) {
+		// The current direct link owns no chains; clear leftovers of the name.
+		if err := next.ClearIfDisabled(); err != nil {
+			return rollback(err)
+		}
+	}
+	if err := g.sync(); err != nil {
+		return rollback(err)
+	}
+	if err := next.Enable(); err != nil {
+		return rollback(fmt.Errorf("failed to link ipset to interface: %w", err))
+	}
+	if err := current.Disable(); err != nil {
+		return rollback(fmt.Errorf("failed to unlink previous routing: %w", err))
+	}
+	g.ipsetToLink = next
+	g.restoreState.Store(nil)
 	return nil
 }
 
@@ -396,7 +432,9 @@ func (g *RuleSet) prepareUpdate(model *models.Group, retainOld bool) error {
 	if g.ipset == nil || g.ipsetToLink == nil {
 		return fmt.Errorf("routing is not ready")
 	}
-	if g.RouteInterface() != model.Interface {
+	// A direct set keeps its exemption until the replacement link is ready; see
+	// switchModeLocked. Withdrawing it here would route through other sets.
+	if g.RouteInterface() != model.Interface && !isDirect(g.RouteInterface()) {
 		if err := g.ipsetToLink.SetInterface(netfilterTools.Blackhole); err != nil {
 			return err
 		}

@@ -90,14 +90,13 @@ func (nh *Helper) appendRouteRules(ipt *iptables.IPTables, direct []string) erro
 }
 
 // setDirect adds or removes a direct exemption and rewrites ROUTE atomically
-// per family. A failed rewrite restores the previous exemption list.
+// per family. A failed rewrite restores the previous exemption list. ROUTE is
+// rewritten even when the list is unchanged: after a partial failure one
+// family may still differ, and an unchanged commit is a no-op.
 func (nh *Helper) setDirect(ipsetName string, enabled bool) error {
 	nh.directMu.Lock()
 	defer nh.directMu.Unlock()
 	previous := nh.directSets[ipsetName]
-	if previous == enabled {
-		return nil
-	}
 	if nh.directSets == nil {
 		nh.directSets = make(map[string]bool)
 	}

@@ -243,16 +243,67 @@ func TestRealRuleSetSyncUpdates(t *testing.T) {
 	assertEgress("mtother") // An ordinary group again: the later group wins.
 	check(a.UpdateGroup(direct))
 	assertDirect()
+	// With the other group disabled, only the subscription (mtvpn) could catch
+	// a gap. Every firewall transaction is probed, so switching between the
+	// group's own VPN and direct must never send a packet through mtvpn.
+	disabledGroup := *group
+	disabledGroup.Enable = false
+	check(a.ReplaceGroups([]*models.Group{direct, &disabledGroup, receiver}))
+	assertDirect()
+	viaOther := *direct
+	viaOther.Interface = "mtother"
+	for _, step := range []*models.Group{&viaOther, direct, &viaOther, direct} {
+		resetCounters()
+		check(a.UpdateGroup(step))
+		for _, f := range families {
+			if n := count(f.command, "mtvpn"); n != 0 {
+				t.Fatalf("%s: switching to %s sent %d packets through the subscription VPN", f.network, step.Interface, n)
+			}
+		}
+		if step.Interface == netfilterTools.Direct {
+			assertDirect()
+		} else {
+			resetCounters()
+			assertEgress("mtother")
+		}
+	}
+	// A failed rollback suspends a direct set by withdrawing its exemption: the
+	// addresses fall back to the subscription VPN, never to the system route.
+	directSet := a.userRuleSets[0]
+	busy := "up_" + directSet.RuntimeKey() + "_t4"
+	run("ipset", "create", busy, "hash:net", "family", "inet")
+	run("iptables", "-t", "mangle", "-N", "BUSY_DIRECT")
+	run("iptables", "-t", "mangle", "-A", "BUSY_DIRECT", "-m", "set", "--match-set", busy, "dst", "-j", "RETURN")
+	extended := *direct
+	extended.Rules = append(append([]*models.Rule(nil), direct.Rules...), &models.Rule{ID: intID.ID{29}, Type: models.RuleTypeSubnet, Rule: "203.0.113.2/32", Enable: true})
+	if err := a.UpdateGroup(&extended); err == nil {
+		t.Fatal("a blocked direct replacement unexpectedly succeeded")
+	}
+	if status := a.RoutingStatus(); len(status) != 1 || status[0].ID != direct.ID {
+		t.Fatalf("failed direct rollback is not visible: %+v", status)
+	}
+	resetCounters()
+	assertEgress("mtvpn")
+	run("iptables", "-t", "mangle", "-F", "BUSY_DIRECT")
+	run("iptables", "-t", "mangle", "-X", "BUSY_DIRECT")
+	run("ipset", "destroy", busy)
+	check(a.retryRoutingRestores(time.Now().Add(time.Hour)))
+	if len(a.RoutingStatus()) != 0 {
+		t.Fatal("direct recovery left a suspended status")
+	}
+	assertDirect()
 	disabledDirect := *direct
 	disabledDirect.Enable = false
 	check(a.UpdateGroup(&disabledDirect))
 	resetCounters()
-	assertEgress("mtother")
+	assertEgress("mtvpn")
 	check(a.UpdateGroup(direct))
 	assertDirect()
 	if removed, err := a.RemoveGroupByID(direct.ID); err != nil || !removed {
 		t.Fatalf("direct group removal: %t %v", removed, err)
 	}
+	check(a.ReplaceGroups([]*models.Group{group, receiver}))
+	oldSet, oldLink = g.ipset, g.ipsetToLink
 	resetCounters()
 	assertEgress("mtother")
 	if err := a.AddSubscription(&models.Subscription{ID: intID.ID{16}, Interface: netfilterTools.Direct, Enable: true}); err == nil {
