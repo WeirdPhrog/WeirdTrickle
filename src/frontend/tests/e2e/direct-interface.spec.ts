@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-const interfaces = [{ id: "blackhole" }, { id: "direct" }, { id: "wg0", name: "My VPN" }];
+const interfaces = [
+  { id: "blackhole" },
+  { id: "direct" },
+  { id: "wg1", name: "Second VPN" },
+  { id: "wg0", name: "My VPN" },
+];
 
 test("groups can bypass VPN routing; subscriptions cannot", async ({ page }) => {
   let savedGroups: { interface: string }[] = [];
@@ -51,8 +56,11 @@ test("groups can bypass VPN routing; subscriptions cannot", async ({ page }) => 
   );
   await page.goto("/");
 
+  const optionLabels = () => page.locator('[role="option"] .option-label').allInnerTexts();
   const groupInterface = page.locator(".group-actions [data-select-trigger]").first();
   await groupInterface.click();
+  // "No VPN" first, "blackhole" last, tunnels in the server's order.
+  await expect.poll(optionLabels).toEqual(["No VPN", "wg1", "wg0", "blackhole"]);
   await page.getByRole("option", { name: /^No VPN/ }).click();
   await expect(groupInterface).toContainText("No VPN");
   await expect(groupInterface).toContainText("System route");
@@ -61,7 +69,7 @@ test("groups can bypass VPN routing; subscriptions cannot", async ({ page }) => 
 
   await page.getByRole("tab", { name: "Subscriptions" }).click();
   await page.locator(".subscription-interface [data-select-trigger]").first().click();
-  await expect(page.getByRole("option", { name: "wg0" })).toBeVisible();
+  await expect.poll(optionLabels).toEqual(["wg1", "wg0", "blackhole"]);
   await expect(page.getByRole("option", { name: /^No VPN/ })).toHaveCount(0);
   await expect(page.getByRole("option", { name: "direct", exact: true })).toHaveCount(0);
 });
