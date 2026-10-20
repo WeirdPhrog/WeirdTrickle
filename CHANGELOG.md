@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-10-20
+
+### Добавлено
+
+- В Groups появился интерфейс **«Без VPN»** (системный маршрут, в `config.yaml` — `interface: direct`). Адреса такой группы WeirdTrickle не маркирует, и они идут обычной маршрутизацией роутера: через основной WAN, резервный канал и политики подключений Keenetic. Так можно пустить нужные домены, IP и подсети напрямую, даже если они входят в подсеть или ASN подписки. Группа «Без VPN» имеет наивысший приоритет независимо от порядка групп. Для Subscriptions вариант недоступен: API и загрузка конфига его отклоняют.
+
+### Изменено
+
+- README описывает фактическое поведение `?` в Wildcard: у конца шаблона он требует ровно один символ.
+
 ## [2.1.4] — 2026-10-19
 
 Выпуск не меняет маршрутизацию, HTTP API и формат `config.yaml`. Кроме удалённой анимации снега, все изменения внутренние: код сокращён примерно на 1100 строк, и каждый этап перед слиянием прошёл полный набор проверок CI.
@@ -170,7 +180,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.4...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.0...develop
+[2.2.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.0...v2.1.2
