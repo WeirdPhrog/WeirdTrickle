@@ -77,11 +77,20 @@ jobs:
         run: |
           go test -c -tags integration -o /tmp/routing.test ./utils/netfilterTools
           go test -c -tags integration -o /tmp/ruleset.test .
+          # Repeat failure lines as annotations, which are readable without job-log access.
+          run_netns() {
+            if ! sudo unshare --net "$@" -test.v > /tmp/netns-test.log 2>&1; then
+              cat /tmp/netns-test.log
+              grep -E '_test\.go:[0-9]+:|^--- FAIL|^panic' /tmp/netns-test.log | head -n 20 | sed "s/^[[:space:]]*/::error::$backend: /"
+              return 1
+            fi
+            cat /tmp/netns-test.log
+          }
           for backend in legacy nft; do
             sudo update-alternatives --set iptables /usr/sbin/iptables-$backend
             sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-$backend
-            sudo unshare --net /tmp/routing.test -test.run TestRealRouting -test.v
-            sudo unshare --net /tmp/ruleset.test -test.run TestRealRuleSetSync -test.v
+            run_netns /tmp/routing.test -test.run TestRealRouting
+            run_netns /tmp/ruleset.test -test.run TestRealRuleSetSync
           done
       - name: Subscription downloads over preferred interface and fallback (isolated namespaces)
         working-directory: src/backend
