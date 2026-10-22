@@ -22,7 +22,7 @@
           <Github size={22} />
         </div>
         <div class="text">
-          {t("GitHub Fork")}
+          {t("WeirdTrickle on GitHub")}
           <a
             target="_blank"
             rel="noopener noreferrer"
@@ -45,7 +45,7 @@
           >
         </div>
       </div>
-      <h3>{t("Original MagiTrickle project")}</h3>
+      <h3>{t("Based on the original MagiTrickle project")}</h3>
       <div class="block">
         <div class="icon">
           <Globe size={22} />

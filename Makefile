@@ -10,7 +10,7 @@ PKG_NAME := magitrickle
 PKG_DESCRIPTION := WeirdTrickle DNS-based routing application
 PKG_LICENSE := GPL-3.0-or-later
 PKG_URL := https://github.com/WeirdPhrog/WeirdTrickle
-PKG_MAINTAINER := WeirdPhrog (fork); upstream: Vladimir Avtsenov
+PKG_MAINTAINER := WeirdPhrog; based on MagiTrickle by Vladimir Avtsenov
 
 # VERSION is the source of truth for local builds and CI. A release tag must
 # match it; the workflow validates this before building or publishing anything.

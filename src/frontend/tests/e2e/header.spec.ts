@@ -50,8 +50,12 @@ test.describe("Header Settings", () => {
     await expect(issueLink.locator("..")).toContainText("Report a WeirdTrickle issue");
     await expect(issueLink).toHaveAttribute("rel", "noopener noreferrer");
     await expect(
-      dialog.getByRole("heading", { name: "Original MagiTrickle project" }),
+      dialog.getByRole("heading", { name: "Based on the original MagiTrickle project" }),
     ).toBeVisible();
+    await expect(
+      dialog.locator('a[href="https://github.com/WeirdPhrog/WeirdTrickle"]').locator(".."),
+    ).toContainText("WeirdTrickle on GitHub");
+    await expect(dialog).not.toContainText(/fork/i);
     await expect(dialog.getByText("Official website")).toBeVisible();
     await expect(dialog.getByText("MagiTrickle Bug Tracker")).toBeVisible();
 

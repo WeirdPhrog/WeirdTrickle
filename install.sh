@@ -89,7 +89,7 @@ main() {
     trap 'exit 143' TERM
     base=https://github.com/WeirdPhrog/WeirdTrickle/releases
     if [ -z "$version" ]; then
-        download "$base/latest/download/VERSION" "$mt_tmp/VERSION" || die 'Cannot fetch the fork release. Check HTTPS access and CA certificates.'
+        download "$base/latest/download/VERSION" "$mt_tmp/VERSION" || die 'Cannot fetch the WeirdTrickle release. Check HTTPS access and CA certificates.'
         version=$(cat "$mt_tmp/VERSION")
     fi
     case "$version" in ''|*[!0-9.]*) die 'Invalid release version.' ;; esac
@@ -161,7 +161,7 @@ main() {
     mkdir -p /opt/etc/opkg
     printf 'arch %s 250\n' "$target" > /opt/etc/opkg/magitrickle-fork.conf
     "$opkg" update
-    # Prevent a general opkg upgrade from replacing this fork with upstream.
+    # Prevent a general opkg upgrade from replacing WeirdTrickle with the original MagiTrickle.
     if [ -n "$installed" ]; then "$opkg" flag ok magitrickle; fi
     set -- --force-downgrade
     # opkg otherwise skips a different package with the same name and version.

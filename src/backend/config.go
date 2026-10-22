@@ -23,7 +23,7 @@ import (
 const cfgFolderLocation = constant.AppStateDir
 const cfgFileLocation = cfgFolderLocation + "/config.yaml"
 
-// Early fork releases wrote their calendar release version into the YAML.
+// Early WeirdTrickle releases wrote their calendar release version into the YAML.
 // They use the same 0.x schema; accept them to recover existing installations.
 var calendarConfigVersion = regexp.MustCompile(`^20[0-9]{2}\.[0-9]{1,2}\.[0-9]{1,2}\.[0-9]+$`)
 
