@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [2.2.3] — 2026-10-22
+
+### Исправлено
+
+- Сборка переведена на Go 1.26.10 с исправлениями уязвимостей в `crypto/x509`. Этот пакет проверяет сертификаты при загрузке подписок по HTTPS. Поведение WeirdTrickle не меняется.
+
+### Изменено
+
+- Репозиторий больше не числится форком на GitHub. README называет WeirdTrickle проектом, основанным на MagiTrickle (с прежней ссылкой на исходный коммит a058158). Раздел установки называется «Установка: Keenetic / Netcraze / Entware», ссылка на него в описании релизов обновлена.
+
 ## [2.2.2] — 2026-10-20
 
 ### Изменено
@@ -194,7 +204,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.2...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.3...develop
+[2.2.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.1.4...v2.2.0
