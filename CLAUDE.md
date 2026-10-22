@@ -40,7 +40,7 @@ Backend binary is compressed with UPX during build (skipped for riscv64, mips64,
 ## Backend
 
 **Entry point**: `src/backend/cmd/magitrickled/main.go`  
-**Go module**: `magitrickle` (Go 1.26.9; see `go.mod`)
+**Go module**: `magitrickle` (Go 1.26.10; see `go.mod`)
 
 Run tests:
 ```sh

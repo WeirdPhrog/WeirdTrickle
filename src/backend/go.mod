@@ -1,6 +1,6 @@
 module magitrickle
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/IGLOU-EU/go-wildcard/v2 v2.1.0
