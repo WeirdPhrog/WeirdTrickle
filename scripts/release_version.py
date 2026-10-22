@@ -39,6 +39,6 @@ if __name__ == "__main__":
         notes = release_notes((root / "CHANGELOG.md").read_text(encoding="utf-8"), version)
     if args.notes:
         print(notes)
-        print("\nУстановка и обновление: [README](https://github.com/WeirdPhrog/WeirdTrickle#установка-из-этого-форка-keenetic--netcraze--entware)")
+        print("\nУстановка и обновление: [README](https://github.com/WeirdPhrog/WeirdTrickle#установка-keenetic--netcraze--entware)")
     else:
         print(version)

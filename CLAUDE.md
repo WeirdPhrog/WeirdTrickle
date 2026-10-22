@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WeirdTrickle is a fork of MagiTrickle, a DNS-based traffic routing utility for routers (Entware/OpenWrt). It intercepts DNS queries via a MITM proxy, caches resolved IPs, matches them against domain rules, and programs iptables/ipset to route matched traffic through a specified network interface.
+WeirdTrickle is based on MagiTrickle, a DNS-based traffic routing utility for routers (Entware/OpenWrt). It intercepts DNS queries via a MITM proxy, caches resolved IPs, matches them against domain rules, and programs iptables/ipset to route matched traffic through a specified network interface.
 
-The package name `magitrickle`, service `S99magitrickle`, binary `magitrickled`, Go module `magitrickle` and configuration paths intentionally retain their original names so existing installations can upgrade without moving their settings. User-facing names and fork links use WeirdTrickle.
+The package name `magitrickle`, service `S99magitrickle`, binary `magitrickled`, Go module `magitrickle` and configuration paths intentionally retain their original names so existing installations can upgrade without moving their settings. User-facing names and project links use WeirdTrickle.
 
 ## Build System
 
@@ -133,7 +133,7 @@ Runtime config is YAML; platform-specific default paths are in `constant/path_*.
 - iptables chain prefix `MT_`, ipset prefix `mt_`
 - Default monitored interface: `br0`
 
-`constant.ConfigVersion` is the YAML schema version (`0.7.0`), separate from the release version. Keep compatibility with original `0.x` configs and calendar-version configs from early fork releases. Do not set `configVersion` to the number in `VERSION`.
+`constant.ConfigVersion` is the YAML schema version (`0.7.0`), separate from the release version. Keep compatibility with original `0.x` configs and calendar-version configs from early WeirdTrickle releases. Do not set `configVersion` to the number in `VERSION`.
 
 On Entware, settings are in `/opt/var/lib/magitrickle/config.yaml`. The installer backs up existing settings/state under `/opt/var/backups/magitrickle/` before replacing the package. Updates use `weirdtrickle-update`; `magitrickle-update` is a compatibility alias. Calendar releases require one invocation of the current installer to migrate to three-part versions.
 
@@ -153,4 +153,4 @@ For a release, update `VERSION`, move the pending changes from `## [Unreleased]`
 
 API annotations are in `src/backend/api/`; the general metadata is in `api/doc.go`. `make swagger` regenerates `docs/swagger.yaml` from them without changing runtime dependencies. CI regenerates it and rejects a diff. API version `1.0` denotes the v1 contract, not the application release or config schema.
 
-Report fork issues at https://github.com/WeirdPhrog/WeirdTrickle/issues. Keep upstream MagiTrickle links clearly labelled as the original project in README and the visible About dialog.
+Report WeirdTrickle issues at https://github.com/WeirdPhrog/WeirdTrickle/issues. Keep upstream MagiTrickle links clearly labelled as the original project in README and the visible About dialog.
