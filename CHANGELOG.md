@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.2.4] — 2026-10-22
+
+### Изменено
+
+- В окне «О программе» ссылка на репозиторий подписана «WeirdTrickle на GitHub» вместо «Форк на GitHub». Раздел ссылок оригинала называется «Основан на оригинальном проекте MagiTrickle».
+- Установщик в сообщении об ошибке загрузки и поле Maintainer пакета больше не называют проект форком.
+
 ## [2.2.3] — 2026-10-22
 
 ### Исправлено
@@ -204,7 +211,8 @@
 
 Выпуски до 1.0.0 использовали номера `2026.x.x.x`; последний из них — `2026.10.16.20`. Их файлы и заметки доступны на странице [Releases](https://github.com/WeirdPhrog/WeirdTrickle/releases).
 
-[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.3...develop
+[Unreleased]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.4...develop
+[2.2.4]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/WeirdPhrog/WeirdTrickle/compare/v2.2.0...v2.2.1
